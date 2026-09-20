@@ -888,6 +888,21 @@ test_claude_forwards_firstmate_config_dir_when_set() {
   pass "claude forwards firstmate's CLAUDE_CONFIG_DIR so the crewmate uses the same credential store"
 }
 
+test_lavish_server_address_is_exported_to_worker_launch() {
+  local rec id out status launch
+  id=profile-lavish-host-z18
+  rec=$(make_spawn_case profile-lavish-host claude "$id")
+  read_case_record "$rec"
+  printf '%s\n' '100.99.161.42' > "$HOME_DIR/config/lavish-axi-host"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+  status=$?
+  expect_code 0 "$status" "a configured Lavish server address should allow the worker spawn"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "export LAVISH_AXI_HOST='100.99.161.42';" \
+    "worker launch did not export the primary-owned Lavish server address"
+  pass "the primary-owned Lavish server address reaches every worker launch"
+}
+
 test_claude_omits_config_dir_prefix_when_unset() {
   local rec id out status launch
   id=profile-claude-nocfgdir-z18
@@ -1472,6 +1487,7 @@ test_pi_signed_missing_binary_refuses_before_endpoint_or_metadata
 test_pi_signed_persistent_secondmate_uses_pi_extensions_and_identity
 test_batch_forwards_shared_profile_flags
 test_claude_forwards_firstmate_config_dir_when_set
+test_lavish_server_address_is_exported_to_worker_launch
 test_claude_omits_config_dir_prefix_when_unset
 test_claude_permission_mode_bypass_matches_absent_launch
 test_claude_permission_mode_auto_swaps_only_the_permission_flag

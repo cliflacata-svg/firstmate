@@ -14,13 +14,14 @@
 #   fm-procevent-lavish.sh poll <artifact.html>
 #
 # classify   Print the lifecycle state a handler should act on: feedback, ended,
-#            waiting, missing, or unknown.
+#            waiting, disconnected, missing, or unknown.
 # read       Print a structured presentation of one already-captured result so a
 #            handler consumes every queued item without grepping the raw file.
 #            It is read-only over the capture: it does not arm, poll, or change
-#            what Lavish delivered. The session-ending freeform message
-#            (tag=message) is its own labeled field, printed first and distinct
-#            from per-element annotations. Declared and presented item counts,
+#            what Lavish delivered. The freeform message (tag=message) is its
+#            own labeled field, printed first and distinct from per-element
+#            annotations; it is labeled SESSION-ENDING MESSAGE only when the
+#            session ended. Declared and presented item counts,
 #            plus a completeness verdict, follow before all annotations so a
 #            partial read is obvious. Each annotation retains its element uid,
 #            selector, tag, and text. A non-choice freeform comment (`prompt`)
@@ -47,9 +48,10 @@
 # Closing a review surface that carried nothing is the single most common Lavish
 # result: the captain reads a board, says nothing, and closes it. Announcing that
 # put a wake in front of the handler whose entire content was that nothing
-# happened. `silent` therefore holds one narrow, positively-determined shape -
+# happened. `silent` therefore holds two narrow, positively-determined shapes -
 # a session this adapter classifies `ended` that carries no queued content block
-# at all - and every other result stays announced.
+# at all, or `browser_disconnected`, which carries no answer while the session
+# remains open - and every other result stays announced.
 #
 # Deliberately narrow, in both directions. A `Send & End` close carrying the
 # captain's actual answer arrives as `status: feedback` with `session_ended`, so
@@ -65,6 +67,13 @@
 # canonical source identity, the argv for the currently published poll command,
 # and how to read a completed result. Ownership, durable capture, publication,
 # and restart recovery all belong to bin/fm-procevent.sh.
+#
+# The published poll vocabulary includes feedback, ended, waiting, and
+# browser_disconnected. A waiting result from this no-timeout poll means a
+# second poller was present; it is not a normal idle round. browser_disconnected
+# means the session remains open and is handled as a silent reconnect wait.
+# The poll reads config/lavish-axi-host from FM_HOME before every lavish-axi
+# invocation so firstmate and workers reach the same server.
 #
 # `answers` is this adapter's half of the generic keyed-answer contract in
 # bin/fm-procevent.sh. It reports what the captain actually chose, as
@@ -124,7 +133,24 @@ FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 . "$SCRIPT_DIR/fm-procevent-lib.sh"
 
 die() { printf 'error: %s\n' "$1" >&2; exit 1; }
-usage() { sed -n '2,111p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,/^set -u$/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//'; exit 2; }
+
+apply_configured_lavish_host() {
+  local host_file host
+  host_file="${FM_HOME%/}/config/lavish-axi-host"
+  if [ -e "$host_file" ] || [ -L "$host_file" ]; then
+    if [ ! -f "$host_file" ] || [ ! -r "$host_file" ]; then
+      die "config/lavish-axi-host must be a readable regular file"
+    fi
+    host=$(cat "$host_file") || die "cannot read config/lavish-axi-host"
+    case "$host" in
+      ''|*[[:space:][:cntrl:]]*)
+        die "config/lavish-axi-host must contain one non-empty address without whitespace"
+        ;;
+    esac
+    export LAVISH_AXI_HOST=$host
+  fi
+}
 
 # Canonical identity is physical, not the path string: Lavish itself keys a
 # session on the realpath of the artifact, so two names for one file are one
@@ -281,6 +307,7 @@ cmd_poll() {
   done
   while :; do
     iteration_started=$(poll_iteration_started) || die "cannot start the poll rate governor"
+    apply_configured_lavish_host
     lavish-axi poll "$artifact" | poll_response_filter "$response"
     pipeline_status=("${PIPESTATUS[@]}")
     rc=${pipeline_status[0]}
@@ -325,9 +352,10 @@ cmd_classify() {
   [ -f "$file" ] || die "result file does not exist: $file"
   status=$(session_field "$file" status)
   case "$status" in
-    feedback) printf 'feedback\n'; return 0 ;;
-    ended)    printf 'ended\n'; return 0 ;;
-    waiting)  printf 'waiting\n'; return 0 ;;
+    feedback)            printf 'feedback\n'; return 0 ;;
+    ended)               printf 'ended\n'; return 0 ;;
+    waiting)             printf 'waiting\n'; return 0 ;;
+    browser_disconnected) printf 'disconnected\n'; return 0 ;;
   esac
   error_message=$(awk 'NR == 1 && /^error:[[:space:]]*/ { sub(/^error:[[:space:]]*/, ""); print }' "$file")
   error_code=$(awk '
@@ -401,6 +429,7 @@ cmd_silent() {
   local file=${1-} content_rc
   [ -n "$file" ] || usage
   [ -f "$file" ] && [ ! -L "$file" ] || die "result file does not exist: $file"
+  [ "$(cmd_classify "$file")" = disconnected ] && return 0
   [ "$(cmd_classify "$file")" = ended ] || return 1
   result_has_queued_content "$file"
   content_rc=$?
@@ -537,9 +566,9 @@ cmd_answers() { cmd_choice_rows answers "$@"; }
 cmd_reconciles() { cmd_choice_rows reconciles "$@"; }
 
 # Present one already-captured result for a handler. Body lines are prefixed
-# so a captain-supplied string cannot forge a section label. The session-ending
-# message is printed before the count line and before any annotation, because
-# that is the field a truncated grep of the raw capture historically dropped.
+# so a captain-supplied string cannot forge a section label. A freeform message
+# is printed before the count line and before any annotation, because that is
+# the field a truncated grep of the raw capture historically dropped.
 # A non-choice annotation that carries a freeform `prompt` prints that comment
 # as its own field; a selector must not hide the typed words, even when the
 # comment matches the captured element text. Choice rows keep Context data
@@ -623,15 +652,17 @@ cmd_read() {
       print "| $_\n" for @lines;
     }
     if (@messages) {
-      print "SESSION-ENDING MESSAGE\n";
+      my $message_label = $session_ended =~ /^(?:true|True|TRUE)$/
+        ? "SESSION-ENDING MESSAGE" : "CAPTAIN MESSAGE";
+      print "$message_label\n";
       for my $i (0 .. $#messages) {
-        print "SESSION-ENDING MESSAGE PART ", ($i + 1), " of ", scalar(@messages), "\n" if @messages > 1;
+        print "$message_label PART ", ($i + 1), " of ", scalar(@messages), "\n" if @messages > 1;
         my $body = defined $messages[$i]{prompt} && length $messages[$i]{prompt}
           ? $messages[$i]{prompt}
           : (defined $messages[$i]{text} ? $messages[$i]{text} : "");
         emit_body($body);
       }
-      print "END SESSION-ENDING MESSAGE\n";
+      print "END $message_label\n";
     } else {
       print "SESSION-ENDING MESSAGE: (none)\n";
     }
