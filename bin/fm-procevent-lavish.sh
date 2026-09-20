@@ -136,7 +136,7 @@ die() { printf 'error: %s\n' "$1" >&2; exit 1; }
 usage() { sed -n '2,/^set -u$/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//'; exit 2; }
 
 apply_configured_lavish_host() {
-  local host_file host rc
+  local original_present=$1 original_host=$2 host_file host rc
   host_file="${FM_HOME%/}/config/lavish-axi-host"
   host=$(perl -MFcntl=:mode -e '
     use strict;
@@ -159,7 +159,14 @@ apply_configured_lavish_host() {
   rc=$?
   case "$rc" in
     0) ;;
-    10) return 0 ;;
+    10)
+      if [ "$original_present" = 1 ]; then
+        export LAVISH_AXI_HOST=$original_host
+      else
+        unset LAVISH_AXI_HOST
+      fi
+      return 0
+      ;;
     11) die "config/lavish-axi-host must be a readable regular file" ;;
     *) die "cannot read config/lavish-axi-host" ;;
   esac
@@ -306,8 +313,12 @@ poll_iteration_floor_wait() {
 
 cmd_poll() {
   local artifact=${1-} delay attempt=0 response cleanup_command rc filter_rc iteration_started
-  local pipeline_status
+  local pipeline_status original_host_present=0 original_host=
   [ -n "$artifact" ] || usage
+  if [ "${LAVISH_AXI_HOST+x}" = x ]; then
+    original_host_present=1
+    original_host=$LAVISH_AXI_HOST
+  fi
   [ "$#" -eq 1 ] || usage
   command -v lavish-axi >/dev/null 2>&1 || die "lavish-axi is not installed"
   delay=$(poll_retry_delay) || exit 1
@@ -326,7 +337,7 @@ cmd_poll() {
   done
   while :; do
     iteration_started=$(poll_iteration_started) || die "cannot start the poll rate governor"
-    apply_configured_lavish_host
+    apply_configured_lavish_host "$original_host_present" "$original_host"
     lavish-axi poll "$artifact" | poll_response_filter "$response"
     pipeline_status=("${PIPESTATUS[@]}")
     rc=${pipeline_status[0]}

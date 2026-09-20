@@ -2189,8 +2189,22 @@ HOST_SEEN="$TMP_ROOT/host-config-seen"
 HOST_BIN=$(fm_fakebin "$TMP_ROOT/host-config-bin")
 cat > "$HOST_BIN/lavish-axi" <<'SH'
 #!/usr/bin/env bash
-printf '%s\n' "${LAVISH_AXI_HOST-}" > "$HOST_SEEN"
-printf 'session:\n  file: /host-config.html\n  status: ended\n  ended_by: user\n'
+if [ -n "${HOST_RETRY_SEEN-}" ]; then
+  if [ "${LAVISH_AXI_HOST+x}" = x ]; then
+    printf 'set:%s\n' "$LAVISH_AXI_HOST" >> "$HOST_RETRY_SEEN"
+  else
+    printf 'unset\n' >> "$HOST_RETRY_SEEN"
+  fi
+  if [ "$(wc -l < "$HOST_RETRY_SEEN" | tr -d ' ')" = 1 ]; then
+    rm -f "$HOST_CONFIG_FILE"
+    printf 'error: Lavish Editor poll response was interrupted\ncode: SERVER_ERROR\n'
+  else
+    printf 'session:\n  file: /host-config.html\n  status: ended\n  ended_by: user\n'
+  fi
+else
+  printf '%s\n' "${LAVISH_AXI_HOST-}" > "$HOST_SEEN"
+  printf 'session:\n  file: /host-config.html\n  status: ended\n  ended_by: user\n'
+fi
 SH
 chmod +x "$HOST_BIN/lavish-axi"
 PATH="$HOST_BIN:$PATH" HOST_SEEN="$HOST_SEEN" LAVISH_AXI_HOST=wrong.example FM_HOME="$HOST_HOME" \
@@ -2198,6 +2212,26 @@ PATH="$HOST_BIN:$PATH" HOST_SEEN="$HOST_SEEN" LAVISH_AXI_HOST=wrong.example FM_H
 assert_grep '100.99.161.42' "$HOST_SEEN" \
   "the adapter poll did not read config/lavish-axi-host before invoking lavish-axi"
 pass "Lavish poll uses the configured per-machine board address"
+
+HOST_RETRY_SEEN="$TMP_ROOT/host-config-retry-seen"
+HOST_RETRY_EXPECTED="$TMP_ROOT/host-config-retry-expected"
+printf '%s\n%s\n' 'set:100.99.161.42' 'set:ambient.example' > "$HOST_RETRY_EXPECTED"
+PATH="$HOST_BIN:$PATH" HOST_RETRY_SEEN="$HOST_RETRY_SEEN" \
+  HOST_CONFIG_FILE="$HOST_HOME/config/lavish-axi-host" LAVISH_AXI_HOST=ambient.example \
+  FM_LAVISH_POLL_RETRY_DELAY=1 FM_HOME="$HOST_HOME" \
+  "$ROOT/bin/fm-procevent-lavish.sh" poll "$HOST_ART" >/dev/null
+cmp -s "$HOST_RETRY_EXPECTED" "$HOST_RETRY_SEEN" \
+  || fail "Lavish poll did not restore its original host after configuration removal"
+
+HOST_RETRY_UNSET_SEEN="$TMP_ROOT/host-config-retry-unset-seen"
+printf '%s\n' '100.99.161.42' > "$HOST_HOME/config/lavish-axi-host"
+printf '%s\n%s\n' 'set:100.99.161.42' 'unset' > "$HOST_RETRY_EXPECTED"
+env -u LAVISH_AXI_HOST PATH="$HOST_BIN:$PATH" HOST_RETRY_SEEN="$HOST_RETRY_UNSET_SEEN" \
+  HOST_CONFIG_FILE="$HOST_HOME/config/lavish-axi-host" FM_LAVISH_POLL_RETRY_DELAY=1 \
+  FM_HOME="$HOST_HOME" "$ROOT/bin/fm-procevent-lavish.sh" poll "$HOST_ART" >/dev/null
+cmp -s "$HOST_RETRY_EXPECTED" "$HOST_RETRY_UNSET_SEEN" \
+  || fail "Lavish poll did not restore its originally unset host after configuration removal"
+pass "Lavish poll restores its original host when configuration disappears"
 
 HOST_BLOCKED_HOME="$TMP_ROOT/host-config-blocked"
 mkdir -p "$HOST_BLOCKED_HOME"

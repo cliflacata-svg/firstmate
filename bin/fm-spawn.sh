@@ -501,16 +501,22 @@ esac
 # config/lavish-axi-host is the primary-owned per-machine address for the
 # shared Lavish server. Read it once per launch and refuse malformed values so
 # every worker reaches the same server instead of starting a second one.
-if ! LAVISH_AXI_HOST_PRESENT=$(fm_config_source_present "$CONFIG/lavish-axi-host"); then
+if [ "${LAVISH_AXI_HOST+x}" = x ]; then
+  LAVISH_AXI_HOST_EFFECTIVE_PRESENT=1
+else
+  LAVISH_AXI_HOST_EFFECTIVE_PRESENT=0
+  LAVISH_AXI_HOST=
+fi
+if ! LAVISH_AXI_HOST_CONFIG_PRESENT=$(fm_config_source_present "$CONFIG/lavish-axi-host"); then
   exit 1
 fi
-LAVISH_AXI_HOST=
-if [ "$LAVISH_AXI_HOST_PRESENT" = 1 ]; then
+if [ "$LAVISH_AXI_HOST_CONFIG_PRESENT" = 1 ]; then
   if [ ! -f "$CONFIG/lavish-axi-host" ] || [ ! -r "$CONFIG/lavish-axi-host" ]; then
     echo "error: config/lavish-axi-host must be a readable regular file" >&2
     exit 1
   fi
   LAVISH_AXI_HOST=$(cat "$CONFIG/lavish-axi-host") || exit 1
+  LAVISH_AXI_HOST_EFFECTIVE_PRESENT=1
   case "$LAVISH_AXI_HOST" in
     ''|*[[:space:][:cntrl:]]*)
       echo "error: config/lavish-axi-host must contain one non-empty address without whitespace" >&2
@@ -4681,8 +4687,10 @@ fi
 # LAUNCH_ENV_PREFIX construction below sets it again at the `env -i` boundary,
 # so under an enabled allowlist the switch is established before the wrapping
 # `/bin/sh` starts rather than only inside the command that shell runs.
-if [ -n "$LAVISH_AXI_HOST" ]; then
+if [ "$LAVISH_AXI_HOST_EFFECTIVE_PRESENT" = 1 ]; then
   LAUNCH="export LAVISH_AXI_HOST=$(shell_quote "$LAVISH_AXI_HOST"); $LAUNCH"
+else
+  LAUNCH="unset LAVISH_AXI_HOST; $LAUNCH"
 fi
 LAUNCH="export COMPACT_ADVISER_DISABLE=1; $LAUNCH"
 if [ -z "$SPAWN_TRACEPARENT" ] && [ "$RELAUNCH" -eq 1 ]; then
@@ -4723,8 +4731,10 @@ spawn_send_text_line "$T" "export GOTMPDIR=$TASK_TMP/gotmp"
 # pre-launch channel, so later commands in that shell inherit it too. The launch
 # command independently establishes the value for the agent process itself.
 spawn_send_text_line "$T" "export COMPACT_ADVISER_DISABLE=1"
-if [ -n "$LAVISH_AXI_HOST" ]; then
+if [ "$LAVISH_AXI_HOST_EFFECTIVE_PRESENT" = 1 ]; then
   spawn_send_text_line "$T" "export LAVISH_AXI_HOST=$(shell_quote "$LAVISH_AXI_HOST")"
+else
+  spawn_send_text_line "$T" "unset LAVISH_AXI_HOST"
 fi
 # Mark the pane as a task worker so bin/fm-test-run.sh can refuse to run the
 # suite in the repository's primary checkout. Ship and scout workers are the
