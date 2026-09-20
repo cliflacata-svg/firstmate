@@ -20,7 +20,7 @@
 #           fleet work and must not become fleet work.
 #
 # Usage:
-#   fm-inbox.sh note [--request-id <id>] [--json] <text>...
+#   fm-inbox.sh note [--request-id <id>] [--json] [--] <text>...
 #   fm-inbox.sh note [--request-id <id>] [--json] -   (body from stdin)
 #   fm-inbox.sh announce [--json] <id>
 #   fm-inbox.sh reply [--json] <id> <text>... | reply [--json] <id> -
@@ -39,6 +39,14 @@
 # crash between save and wake still replays the original note. Without
 # --request-id the historical one-note-per-call behaviour is unchanged.
 # `announce` repairs the wake for an already-saved note without creating another.
+# It refuses a note whose announcement state is UNKNOWN: a note written before
+# this home tracked announcement markers already appended its own wake at
+# creation, and there is no record to prove it, so announcing it again would be
+# the duplicate wake this contract exists to remove. Notes written from here on
+# carry `announce_marker=1`, which is what makes a missing marker mean "not
+# announced" rather than "not known". Receipts report that state as null.
+# A note body is text, not options: only the flags above are parsed, anything
+# else starting with `--` begins the body, and `--` ends option parsing.
 # Human `note`/`list`/`drain` output and exit conventions stay as they were when
 # those flags are omitted: a saved note whose wake fails still exits 1. With
 # --request-id or --json, a saved-but-unannounced note exits 3 so a caller can
@@ -49,6 +57,9 @@
 # rather than implying the first page is everything; omitted[] names the
 # surface and how to reveal it, the same convention as fm-bearings-snapshot.sh.
 # `reply` is how the primary publishes its actual answer against a note id.
+# Each reply is stamped with a durable per-home sequence, so the receipts cursor
+# is a strict total order and two replies recorded in the same second are both
+# readable. One reply per note: a second one is refused.
 # `ready` is the read-only primary-readiness projection (lock, wake-consumer
 # health, away posture, observation time). It never acquires the session lock
 # and never infers liveness from a lock file, a session, or a pane.
@@ -184,9 +195,11 @@ REQUESTS="$INBOX/.requests"
 ANNOUNCED_DIR="$INBOX/.announced"
 REPLIES="$INBOX/.replies"
 
-FM_INBOX_RECEIPTS_PENDING=${FM_INBOX_RECEIPTS_PENDING:-20}
-FM_INBOX_RECEIPTS_HANDLED=${FM_INBOX_RECEIPTS_HANDLED:-20}
-FM_INBOX_RECEIPTS_REPLIES=${FM_INBOX_RECEIPTS_REPLIES:-20}
+REPLY_SEQ_LOCK="$INBOX/.replies.lock"
+
+RECEIPTS_PENDING_BOUND=20
+RECEIPTS_HANDLED_BOUND=20
+RECEIPTS_REPLIES_BOUND=20
 
 load_wake_lib() {
   local lib="$FM_ROOT/bin/fm-wake-lib.sh"
@@ -241,6 +254,26 @@ mark_announced() {  # <id>
   printf '%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$ANNOUNCED_DIR/$1"
 }
 
+# true | false | unknown, for the note recorded at <path>.
+# A note that carries announce_marker=1 was written by a version that keeps the
+# marker, so a missing marker means it was genuinely never announced. A note
+# without that header predates the marker and already appended its own wake at
+# creation; nothing on disk can tell announced from unannounced for it, so it is
+# unknown rather than false.
+note_announce_state() {  # <id> <path>
+  local marker
+  if note_announced "$1"; then
+    printf 'true\n'
+    return 0
+  fi
+  marker=$(sed -n '/^--$/q;/^announce_marker=1$/p' "$2")
+  if [ -n "$marker" ]; then
+    printf 'false\n'
+  else
+    printf 'unknown\n'
+  fi
+}
+
 read_note_body() {  # <file>
   awk 'found { print; next } /^--$/ { found=1 }' "$1"
 }
@@ -255,6 +288,7 @@ write_note_file() {  # <path> <id> <source> <body> [extra] [request-id]
     printf 'id=%s\n' "$id"
     printf 'at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf 'source=%s\n' "$source"
+    printf 'announce_marker=1\n'
     [ -z "$request_id" ] || printf 'request_id=%s\n' "$request_id"
     [ -z "$extra" ] || printf '%s\n' "$extra"
     printf -- '--\n'
@@ -277,7 +311,7 @@ json.dump({
     "id": note_id,
     "request_id": request_id or None,
     "saved": saved == "1",
-    "announced": announced == "1",
+    "announced": True if announced == "1" else False if announced == "0" else None,
     "path": path,
 }, sys.stdout, separators=(",", ":"))
 sys.stdout.write("\n")
@@ -287,26 +321,34 @@ PY
 # Append exactly one wake so firstmate picks the note up at its next drain.
 # Failure to wake is NOT allowed to lose the note: the record is already on
 # disk, so we report the wake failure and still exit non-zero loudly.
-wake_for() {
-  local id=$1 summary=$2 lib="$FM_ROOT/bin/fm-wake-lib.sh"
+#
+# The marker test, the append and the marker write all happen under the
+# wake-queue lock. Two retries of the same request id run this concurrently -
+# the second replays the reservation while the first is still inside the
+# append - and without that exclusion both would read "not announced" and one
+# note would produce two wake rows.
+announce_note() {  # <id> <summary>
+  local id=$1 summary=$2 lib="$FM_ROOT/bin/fm-wake-lib.sh" status=0
+  if note_announced "$id"; then
+    return 0
+  fi
   if [ ! -r "$lib" ]; then
     printf 'fm-inbox: note saved but NOT announced (missing %s)\n' "$lib" >&2
     return 1
   fi
   load_wake_lib || return 1
-  fm_wake_append check "inbox:$id" "check: captain inbox note $id - $summary"
-}
-
-announce_note() {  # <id> <summary>
-  local id=$1 summary=$2
+  fm_lock_acquire_wait "$FM_WAKE_QUEUE_LOCK" || return 1
   if note_announced "$id"; then
+    fm_lock_release "$FM_WAKE_QUEUE_LOCK"
     return 0
   fi
-  if wake_for "$id" "$summary"; then
+  if fm_wake_append_locked check "inbox:$id" "check: captain inbox note $id - $summary"; then
     mark_announced "$id"
-    return 0
+  else
+    status=1
   fi
-  return 1
+  fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+  return "$status"
 }
 
 finish_note_result() {  # <outcome> <id> <request-id> <json> <strict-exit> <summary>
@@ -377,7 +419,6 @@ queue_note() {
   local tmp id summary staging_name reserved
 
   if [ -n "$request_id" ]; then
-    valid_request_id "$request_id" || die "invalid request id (use 1-128 characters: A-Za-z0-9._:-)"
     reserved="$REQUESTS/$request_id"
     if [ -f "$reserved" ]; then
       id=$(publish_from_reservation "$request_id" "$source" "$body" "$extra") \
@@ -419,22 +460,19 @@ cmd_note() {
     case "$1" in
       --json) json=1; shift ;;
       --request-id)
-        [ "$#" -ge 2 ] || die "usage: fm-inbox.sh note [--request-id <id>] [--json] <text>... (or: note -)"
+        [ "$#" -ge 2 ] || die "usage: fm-inbox.sh note [--request-id <id>] [--json] [--] <text>... (or: note -)"
         request_id=$2
+        valid_request_id "$request_id" \
+          || die "invalid request id (use 1-128 characters: A-Za-z0-9._:-)"
         shift 2
         ;;
-      --request-id=*)
-        request_id=${1#--request-id=}
-        shift
-        ;;
       --) shift; break ;;
-      -h|--help) die "usage: fm-inbox.sh note [--request-id <id>] [--json] <text>... (or: note -)" ;;
-      --*) die "unknown option for note: $1" ;;
+      -h|--help) die "usage: fm-inbox.sh note [--request-id <id>] [--json] [--] <text>... (or: note -)" ;;
       *) break ;;
     esac
   done
   if [ "$#" -eq 0 ]; then
-    die "usage: fm-inbox.sh note [--request-id <id>] [--json] <text>... (or: note -)"
+    die "usage: fm-inbox.sh note [--request-id <id>] [--json] [--] <text>... (or: note -)"
   elif [ "$1" = "-" ]; then
     [ "$#" -eq 1 ] || die "usage: fm-inbox.sh note [--request-id <id>] [--json] -"
     body=$(cat; printf .)
@@ -456,14 +494,24 @@ cmd_announce() {
   valid_note_id "$id" || die "invalid note id"
   path=$(note_path "$id") || die "no such note: $id"
   summary=$(note_summary_from_body "$(read_note_body "$path")")
-  if note_announced "$id"; then
-    if [ "$json" -eq 1 ]; then
-      emit_note_json replay "$id" "" 1 1 "$path"
-    else
-      printf 'already-announced %s\n' "$id"
-    fi
-    return 0
-  fi
+  case "$(note_announce_state "$id" "$path")" in
+    true)
+      if [ "$json" -eq 1 ]; then
+        emit_note_json replay "$id" "" 1 1 "$path"
+      else
+        printf 'already-announced %s\n' "$id"
+      fi
+      return 0
+      ;;
+    unknown)
+      if [ "$json" -eq 1 ]; then
+        emit_note_json refused "$id" "" 1 unknown "$path"
+      fi
+      printf 'fm-inbox: note %s predates the announcement marker, so whether it was already announced is UNKNOWN; refusing to announce it again\n' \
+        "$id" >&2
+      exit 1
+      ;;
+  esac
   if announce_note "$id" "$summary"; then
     if [ "$json" -eq 1 ]; then
       emit_note_json created "$id" "" 1 1 "$path"
@@ -481,8 +529,22 @@ cmd_announce() {
   die "note $id is saved at $path but firstmate was NOT woken"
 }
 
+# Claim the next reply sequence. The caller holds REPLY_SEQ_LOCK across the
+# claim AND the record write, so a reply a reader can see implies every lower
+# sequence is already readable: the cursor stays a strict total order.
+next_reply_seq() {
+  local seq_file="$REPLIES/.seq" seq
+  seq=$(cat "$seq_file" 2>/dev/null || printf '0')
+  case "$seq" in
+    ''|*[!0-9]*) seq=0 ;;
+  esac
+  seq=$((seq + 1))
+  printf '%s\n' "$seq" >"$seq_file" || return 1
+  printf '%s\n' "$seq"
+}
+
 cmd_reply() {
-  local json=0 id body path existing existing_body
+  local json=0 id body path staging seq
   if [ "${1:-}" = "--json" ]; then
     json=1
     shift
@@ -503,41 +565,30 @@ cmd_reply() {
   fi
   [ -n "${body//[[:space:]]/}" ] || die "refusing to record an empty reply"
   mkdir -p "$REPLIES"
+  load_wake_lib || die "the reply sequence needs $FM_ROOT/bin/fm-wake-lib.sh"
+  fm_lock_acquire_wait "$REPLY_SEQ_LOCK" || die "could not claim the reply sequence"
   if [ -f "$REPLIES/$id" ]; then
-    existing_body=$(read_note_body "$REPLIES/$id")
-    if [ "$existing_body" = "$body" ] || [ "$existing_body" = "$body"$'\n' ] || [ "$existing_body"$'\n' = "$body" ]; then
-      if [ "$json" -eq 1 ]; then
-        need_python
-        python3 - "$id" "$REPLIES/$id" <<'PY'
-import json, sys
-note_id, path = sys.argv[1], sys.argv[2]
-json.dump({
-    "schema": "fm-inbox-reply.v1",
-    "outcome": "replay",
-    "id": note_id,
-    "path": path,
-}, sys.stdout, separators=(",", ":"))
-sys.stdout.write("\n")
-PY
-      else
-        printf 'replay-reply %s\n' "$id"
-      fi
-      return 0
-    fi
+    fm_lock_release "$REPLY_SEQ_LOCK"
     die "reply already recorded for $id"
   fi
-  existing=$(mktemp "$REPLIES/.staging-XXXXXX")
+  if ! seq=$(next_reply_seq); then
+    fm_lock_release "$REPLY_SEQ_LOCK"
+    die "could not claim the reply sequence"
+  fi
+  staging=$(mktemp "$REPLIES/.staging-XXXXXX")
   {
     printf 'id=%s\n' "$id"
     printf 'at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf 'seq=%s\n' "$seq"
     printf -- '--\n'
     printf '%s' "$body"
     case "$body" in
       *$'\n') ;;
       *) printf '\n' ;;
     esac
-  } >"$existing"
-  mv "$existing" "$REPLIES/$id"
+  } >"$staging"
+  mv "$staging" "$REPLIES/$id"
+  fm_lock_release "$REPLY_SEQ_LOCK"
   if [ "$json" -eq 1 ]; then
     need_python
     python3 - "$id" "$REPLIES/$id" <<'PY'
@@ -560,13 +611,11 @@ cmd_receipts() {
   local after="" all_pending=0 all_handled=0 all_replies=0
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --json) shift ;;
       --after)
         [ "$#" -ge 2 ] || die "usage: fm-inbox.sh receipts [--after <cursor>] [--all-pending] [--all-handled] [--all-replies]"
         after=$2
         shift 2
         ;;
-      --after=*) after=${1#--after=}; shift ;;
       --all-pending) all_pending=1; shift ;;
       --all-handled) all_handled=1; shift ;;
       --all-replies) all_replies=1; shift ;;
@@ -577,7 +626,7 @@ cmd_receipts() {
   done
   need_python
   python3 - "$INBOX" "$ANNOUNCED_DIR" "$REPLIES" "$FM_HOME" \
-    "$FM_INBOX_RECEIPTS_PENDING" "$FM_INBOX_RECEIPTS_HANDLED" "$FM_INBOX_RECEIPTS_REPLIES" \
+    "$RECEIPTS_PENDING_BOUND" "$RECEIPTS_HANDLED_BOUND" "$RECEIPTS_REPLIES_BOUND" \
     "$all_pending" "$all_handled" "$all_replies" "$after" \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" <<'PY'
 import json, os, sys
@@ -626,29 +675,49 @@ def list_notes(folder):
             "at": meta.get("at"),
             "source": meta.get("source"),
             "request_id": meta.get("request_id"),
+            "announce_marker": meta.get("announce_marker") == "1",
             "body": body,
             "path": str(path),
         })
     return notes
+
+# The cursor is the reply sequence first, so it is a strict total order in
+# creation order. `at` and the note id only break ties among replies recorded
+# before the sequence existed, which all carry sequence 0.
+def reply_cursor_of(seq, at, note_id):
+    return "%012d|%s|%s" % (seq, at or "", note_id or "")
 
 def reply_record(note_id):
     path = Path(replies_dir) / note_id
     if not path.is_file():
         return None
     meta, body = parse_record(path)
+    raw_seq = meta.get("seq") or "0"
+    seq = int(raw_seq) if raw_seq.isdigit() else 0
+    at = meta.get("at")
     return {
         "id": note_id,
-        "at": meta.get("at"),
+        "at": at,
         "body": body,
+        "cursor": reply_cursor_of(seq, at, note_id),
     }
 
+# announced is null - not false - for a note written before this home tracked
+# announcement markers: it appended its own wake at creation and left no record
+# of it, so "not announced" is not something anyone can read off this state.
 def enrich(note, acknowledged):
     note_id = note["id"]
     rec = dict(note)
     rec["acknowledged"] = acknowledged
-    rec["announced"] = (Path(announced_dir) / note_id).is_file()
+    if (Path(announced_dir) / note_id).is_file():
+        rec["announced"] = True
+    elif note.get("announce_marker"):
+        rec["announced"] = False
+    else:
+        rec["announced"] = None
     rec["reply"] = reply_record(note_id)
     rec.pop("path", None)
+    rec.pop("announce_marker", None)
     return rec
 
 pending_all = [enrich(n, False) for n in list_notes(inbox)]
@@ -667,32 +736,29 @@ for group in (pending_all, handled_all):
     for note in group:
         if note.get("reply"):
             replies_all.append(note["reply"])
-replies_all.sort(key=lambda r: (r.get("at") or "", r.get("id") or ""))
-
-def cursor_of(reply):
-    return "%s|%s" % (reply.get("at") or "", reply.get("id") or "")
+replies_all.sort(key=lambda r: r["cursor"])
 
 if after:
-    replies_all = [r for r in replies_all if cursor_of(r) > after]
+    replies_all = [r for r in replies_all if r["cursor"] > after]
 
 replies, replies_omitted = bound_list(replies_all, replies_bound, all_replies)
-reply_cursor = cursor_of(replies[-1]) if replies else (after or "")
+reply_cursor = replies[-1]["cursor"] if replies else (after or "")
 
 omitted = []
 if pending_omitted:
     omitted.append({
         "surface": "pending notes omitted by bound: %d" % pending_omitted,
-        "reveal": "raise FM_INBOX_RECEIPTS_PENDING or pass --all-pending",
+        "reveal": "pass --all-pending",
     })
 if handled_omitted:
     omitted.append({
         "surface": "handled notes omitted by bound: %d" % handled_omitted,
-        "reveal": "raise FM_INBOX_RECEIPTS_HANDLED or pass --all-handled",
+        "reveal": "pass --all-handled",
     })
 if replies_omitted:
     omitted.append({
         "surface": "replies omitted by bound: %d" % replies_omitted,
-        "reveal": "raise FM_INBOX_RECEIPTS_REPLIES or pass --all-replies",
+        "reveal": "pass --all-replies",
     })
 
 home_label = "/".join(Path(home).parts[-2:]) if home else home
@@ -711,9 +777,6 @@ PY
 }
 
 cmd_ready() {
-  if [ "${1:-}" = "--json" ]; then
-    shift
-  fi
   [ "$#" -eq 0 ] || die "usage: fm-inbox.sh ready"
   need_python
   # shellcheck source=bin/fm-session-lock-lib.sh
@@ -740,36 +803,40 @@ cmd_ready() {
     posture=present
   fi
 
-  local beat="$STATE/.last-watcher-beat" watch="$SELF_DIR/fm-watch.sh" fresh=0
-  if command -v fm_path_age >/dev/null 2>&1; then
+  # Only ever the age of a beacon that exists: fm_path_age prints a sentinel for
+  # a missing path, and a home that never ran a watcher has no observation to
+  # report an age for.
+  local beat="$STATE/.last-watcher-beat" watch="$SELF_DIR/fm-watch.sh"
+  if [ -e "$beat" ] && command -v fm_path_age >/dev/null 2>&1; then
     beacon_age=$(fm_path_age "$beat")
     case "$beacon_age" in
       ''|*[!0-9]*) beacon_age="" ;;
-      *)
-        if [ "$beacon_age" -lt "${FM_GUARD_GRACE:-300}" ]; then
-          fresh=1
-        fi
-        ;;
     esac
   fi
 
-  if command -v fm_watcher_healthy >/dev/null 2>&1 \
-    && fm_watcher_healthy "$STATE" "$watch" "${FM_GUARD_GRACE:-300}" "$FM_HOME"; then
-    consumer_state=healthy
-    consumer_reason="watcher"
-  elif command -v fm_afk_daemon_owns_supervision >/dev/null 2>&1 \
-    && fm_afk_daemon_owns_supervision "$STATE" && [ "$fresh" -eq 1 ]; then
-    consumer_state=healthy
-    consumer_reason="away-daemon"
-  elif [ "$fresh" -eq 1 ]; then
+  # fm_watcher_supervision_verdict owns what a live wake consumer means per
+  # supervision model. Asking the pid-strict fm_watcher_healthy here instead
+  # would report a mid-turn Claude primary - whose watcher only runs between
+  # turns - as unable to receive work.
+  if ! command -v fm_watcher_supervision_verdict >/dev/null 2>&1; then
     consumer_state=unknown
-    consumer_reason="fresh-beacon-without-live-consumer"
-  elif [ -n "$beacon_age" ]; then
-    consumer_state=down
-    consumer_reason="stale-beacon"
+    consumer_reason="no-wake-lib"
   else
-    consumer_state=down
-    consumer_reason="no-beacon"
+    fm_watcher_supervision_verdict "$STATE" "$watch" "${FM_GUARD_GRACE:-300}" \
+      "$FM_HOME" "$FM_ROOT"
+    if [ "$FM_WATCHER_VERDICT_OK" = true ]; then
+      consumer_state=healthy
+      consumer_reason="supervised"
+    elif [ "$FM_WATCHER_VERDICT_REASON" = no-watcher ]; then
+      consumer_state=unknown
+      consumer_reason="no-watcher"
+    elif [ -e "$beat" ]; then
+      consumer_state=down
+      consumer_reason="stale-beacon"
+    else
+      consumer_state=down
+      consumer_reason="no-beacon"
+    fi
   fi
 
   case "$lock_state:$consumer_state" in
@@ -777,14 +844,6 @@ cmd_ready() {
     free:*|stale:*|*:down) can_receive=false ;;
     *) can_receive=unknown ;;
   esac
-  # A live harness lock without a proven wake consumer is not receivable.
-  if [ "$lock_state" = held ] && [ "$consumer_state" != healthy ]; then
-    if [ "$consumer_state" = down ]; then
-      can_receive=false
-    else
-      can_receive=unknown
-    fi
-  fi
 
   python3 - "$lock_state" "$lock_pid" "$live_harness" \
     "$consumer_state" "$consumer_reason" "$beacon_age" \

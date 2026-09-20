@@ -333,7 +333,7 @@ FM_LOCK_INSPECT_STATE=unknown
 FM_LOCK_INSPECT_PID=
 FM_LOCK_INSPECT_LIVE_HARNESS=unknown
 fm_session_lock_inspect() {  # <state>
-  local state=$1 lock pid comm args
+  local state=$1 lock pid
   # shellcheck disable=SC2034 # Output globals, read by lock status and inbox ready.
   FM_LOCK_INSPECT_STATE=unknown
   # shellcheck disable=SC2034 # Output globals, read by lock status and inbox ready.
@@ -364,18 +364,13 @@ fm_session_lock_inspect() {  # <state>
       ;;
   esac
   if kill -0 "$pid" 2>/dev/null; then
-    comm=$(ps -o comm= -p "$pid" 2>/dev/null) || {
-      FM_LOCK_INSPECT_STATE=unknown
-      return 0
-    }
-    args=$(ps -o args= -p "$pid" 2>/dev/null)
-    if fm_harness_process_matches "$comm" "$args"; then
+    if fm_harness_pid_alive "$pid"; then
       FM_LOCK_INSPECT_STATE=held
       FM_LOCK_INSPECT_LIVE_HARNESS=true
-      return 0
+    else
+      FM_LOCK_INSPECT_STATE=unknown
+      FM_LOCK_INSPECT_LIVE_HARNESS=false
     fi
-    FM_LOCK_INSPECT_STATE=unknown
-    FM_LOCK_INSPECT_LIVE_HARNESS=false
     return 0
   fi
   if ps -o comm= -p "$pid" >/dev/null 2>&1; then

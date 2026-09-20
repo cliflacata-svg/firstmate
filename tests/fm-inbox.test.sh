@@ -2,10 +2,11 @@
 # tests/fm-inbox.test.sh - captain inbox capture, receipts, replies, readiness.
 #
 # Covers the durable order contract: request-id idempotency, the crash window
-# between save and announce, saved-but-unannounced repair, bounded receipts
-# JSON with omission disclosure, the reply cursor, and the readiness
-# projection's unknown path. Human note/list/drain behaviour stays unchanged
-# when the new flags are omitted.
+# between save and announce, saved-but-unannounced repair, the unknown
+# announced state of notes that predate the marker, bounded receipts JSON with
+# omission disclosure, the reply cursor's strict order, and the readiness
+# projection's model-aware verdict and unknown path. Human note/list/drain
+# behaviour stays unchanged when the new flags are omitted.
 set -euo pipefail
 
 # shellcheck source=tests/lib.sh
@@ -193,84 +194,129 @@ assert_equals "replay" "$(printf '%s' "$already" | json_get outcome)" \
   "second announce is already-announced"
 assert_equals "1" "$(count_wakes "$home")" \
   "already-announced must not append another wake"
+home=$(make_home announce-repair)
+set +e
+unannounced=$(FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+  "$isolated/bin/fm-inbox.sh" note --request-id repair-2 --json "announce me" 2>/dev/null)
+set -e
+unannounced_id=$(printf '%s' "$unannounced" | json_get id)
+assert_equals "0" "$(count_wakes "$home")" "the isolated submit wrote no wake"
+repaired=$(run_inbox "$home" announce "$unannounced_id") \
+  || fail "announce should repair a note this version saved but could not announce"
+assert_contains "$repaired" "announced $unannounced_id" "the repair reports the announcement"
+assert_equals "1" "$(count_wakes "$home")" "repairing appends exactly one wake"
 pass "saved-but-unannounced notes are repairable without creating a second note"
 
 # --- bounded receipts JSON, omission disclosure, reply cursor ---------------
 
+json_len() {  # <key>
+  python3 -c 'import json,sys; print(len(json.load(sys.stdin)[sys.argv[1]]))' "$1"
+}
+
 home=$(make_home receipts)
+ids=""
 i=0
-while [ "$i" -lt 3 ]; do
-  run_inbox "$home" note --request-id "pending-$i" "pending body $i" >/dev/null
-  i=$((i + 1))
-done
-i=0
-while [ "$i" -lt 5 ]; do
-  hid_json=$(run_inbox "$home" note --request-id "handled-$i" --json "handled body $i") \
-    || fail "handled fixture note $i failed"
-  hid=$(printf '%s' "$hid_json" | json_get id)
-  run_inbox "$home" drain --ack "$hid" >/dev/null
+while [ "$i" -lt 21 ]; do
+  ids="$ids $(run_inbox "$home" note --request-id "bulk-$i" "bulk body $i" \
+    | sed -n 's/^queued //p')"
   i=$((i + 1))
 done
 
-receipts=$(FM_INBOX_RECEIPTS_PENDING=2 FM_INBOX_RECEIPTS_HANDLED=2 \
-  FM_INBOX_RECEIPTS_REPLIES=2 run_inbox "$home" receipts) \
-  || fail "receipts should succeed"
+receipts=$(run_inbox "$home" receipts) || fail "receipts should succeed"
 assert_equals "fm-inbox-receipts.v1" "$(printf '%s' "$receipts" | json_get schema)" \
   "receipts use the receipts schema"
-pending_len=$(printf '%s' "$receipts" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["pending"]))')
-handled_len=$(printf '%s' "$receipts" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["handled"]))')
-assert_equals "2" "$pending_len" "pending list is bounded"
-assert_equals "2" "$handled_len" "handled list is bounded"
-assert_contains "$receipts" "pending notes omitted by bound:" \
-  "receipts disclose omitted pending notes"
-assert_contains "$receipts" "handled notes omitted by bound:" \
-  "receipts disclose omitted handled notes"
-assert_contains "$receipts" "raise FM_INBOX_RECEIPTS_PENDING or pass --all-pending" \
-  "omission names how to reveal pending notes"
+assert_equals "20" "$(printf '%s' "$receipts" | json_len pending)" \
+  "pending list is bounded without a reveal flag"
+assert_contains "$receipts" "pending notes omitted by bound: 1" \
+  "receipts disclose how many pending notes they omitted"
+assert_contains "$receipts" "pass --all-pending" \
+  "omission names the flag that reveals pending notes"
 assert_contains "$receipts" '"acknowledged":false' "pending notes are not acknowledged"
-assert_contains "$receipts" '"acknowledged":true' "handled notes are acknowledged"
 
-all_receipts=$(run_inbox "$home" receipts --all-pending --all-handled) \
+all_receipts=$(run_inbox "$home" receipts --all-pending) \
   || fail "unbounded receipts should succeed"
-all_pending=$(printf '%s' "$all_receipts" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["pending"]))')
-all_handled=$(printf '%s' "$all_receipts" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["handled"]))')
-assert_equals "3" "$all_pending" "--all-pending reveals every pending note"
-assert_equals "5" "$all_handled" "--all-handled reveals every handled note"
+assert_equals "21" "$(printf '%s' "$all_receipts" | json_len pending)" \
+  "--all-pending reveals every pending note"
 assert_equals "[]" "$(printf '%s' "$all_receipts" | python3 -c 'import json,sys; print(json.load(sys.stdin)["omitted"])')" \
   "revealing every row leaves omitted empty"
-pass "receipts JSON is bounded and discloses what it omitted"
 
-# Reply cursor: two replies, --after the first in sort order returns the rest.
+# shellcheck disable=SC2086 # deliberate word splitting: one id per --ack arg.
+run_inbox "$home" drain --ack $ids >/dev/null || fail "drain --ack of the bulk notes failed"
+handled_receipts=$(run_inbox "$home" receipts) || fail "receipts after drain should succeed"
+assert_equals "20" "$(printf '%s' "$handled_receipts" | json_len handled)" \
+  "handled list is bounded without a reveal flag"
+assert_contains "$handled_receipts" "handled notes omitted by bound: 1" \
+  "receipts disclose how many handled notes they omitted"
+assert_contains "$handled_receipts" "pass --all-handled" \
+  "omission names the flag that reveals handled notes"
+assert_equals "21" "$(run_inbox "$home" receipts --all-handled | json_len handled)" \
+  "--all-handled reveals every handled note"
+assert_contains "$handled_receipts" '"acknowledged":true' "handled notes are acknowledged"
+pass "receipts JSON is bounded by fixed bounds and discloses what it omitted"
+
+# A note written before this home tracked announcement markers already appended
+# its own wake, and nothing proves that, so receipts say unknown rather than
+# false and the repair path refuses it instead of appending a second wake.
+home=$(make_home preexisting)
+run_inbox "$home" note "establish the inbox" >/dev/null || fail "seed note failed"
+legacy="1700000000-legacy"
+printf 'id=%s\nat=2026-01-01T00:00:00Z\nsource=text\n--\nfrom before the marker\n' \
+  "$legacy" > "$home/state/inbox/$legacy.note"
+legacy_announced=$(run_inbox "$home" receipts --all-pending | python3 -c 'import json,sys
+rows={r["id"]: r["announced"] for r in json.load(sys.stdin)["pending"]}
+print(json.dumps(rows[sys.argv[1]]))' "$legacy")
+assert_equals "null" "$legacy_announced" \
+  "a note that predates the marker reports announced as unknown, not false"
+fresh_announced=$(run_inbox "$home" receipts --all-pending | python3 -c 'import json,sys
+print(json.dumps([r["announced"] for r in json.load(sys.stdin)["pending"] if r["id"] != sys.argv[1]]))' "$legacy")
+assert_equals "[true]" "$fresh_announced" \
+  "a note this version wrote still reports a definite announced state"
+before_wakes=$(count_wakes "$home")
+set +e
+legacy_out=$(run_inbox "$home" announce "$legacy" 2>&1)
+legacy_code=$?
+set -e
+expect_code 1 "$legacy_code" "announcing a note with an unknown announced state is refused"
+assert_contains "$legacy_out" "UNKNOWN" "the refusal says the announced state is unknown"
+assert_equals "$before_wakes" "$(count_wakes "$home")" \
+  "the refused repair must not append a second wake"
+pass "notes that predate the announcement marker are unknown, not re-announced"
+
+# Reply cursor: replies recorded within the same second are both readable, in
+# recording order, even when the later note id sorts below the earlier one.
 home=$(make_home cursor)
-id1=$(run_inbox "$home" note --request-id c1 --json "first order" | json_get id)
-id2=$(run_inbox "$home" note --request-id c2 --json "second order" | json_get id)
-run_inbox "$home" reply "$id1" "answer one" >/dev/null
-run_inbox "$home" reply "$id2" "answer two" >/dev/null
+mkdir -p "$home/state/inbox"
+later="1700000000-aaaaaa"
+earlier="1700000000-zzzzzz"
+for nid in "$earlier" "$later"; do
+  printf 'id=%s\nat=2026-01-01T00:00:00Z\nsource=text\nannounce_marker=1\n--\norder %s\n' \
+    "$nid" "$nid" > "$home/state/inbox/$nid.note"
+done
+run_inbox "$home" reply "$earlier" "answer one" >/dev/null || fail "first reply failed"
+run_inbox "$home" reply "$later" "answer two" >/dev/null || fail "second reply failed"
 replies=$(run_inbox "$home" receipts --all-replies) || fail "receipts with replies should succeed"
-reply_count=$(printf '%s' "$replies" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["replies"]))')
-assert_equals "2" "$reply_count" "both replies appear without a cursor"
+assert_equals "2" "$(printf '%s' "$replies" | json_len replies)" \
+  "both replies appear without a cursor"
+order=$(printf '%s' "$replies" | python3 -c 'import json,sys
+print(" ".join(r["id"] for r in json.load(sys.stdin)["replies"]))')
+assert_equals "$earlier $later" "$order" "replies are ordered by when they were recorded"
 first_cursor=$(printf '%s' "$replies" | python3 -c 'import json,sys
-r=json.load(sys.stdin)["replies"][0]
-print("%s|%s" % (r.get("at") or "", r.get("id") or ""))')
-first_reply_id=$(printf '%s' "$replies" | python3 -c 'import json,sys; print(json.load(sys.stdin)["replies"][0]["id"])')
+print(json.load(sys.stdin)["replies"][0]["cursor"])')
 after=$(run_inbox "$home" receipts --all-replies --after "$first_cursor") \
   || fail "receipts --after should succeed"
-after_count=$(printf '%s' "$after" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["replies"]))')
-assert_equals "1" "$after_count" "--after returns only later replies in cursor order"
+assert_equals "1" "$(printf '%s' "$after" | json_len replies)" \
+  "--after returns only replies recorded later"
 after_id=$(printf '%s' "$after" | python3 -c 'import json,sys; print(json.load(sys.stdin)["replies"][0]["id"])')
-assert_not_equals "$first_reply_id" "$after_id" \
-  "the reply after the cursor is the other note, not the one already seen"
-replay_reply=$(run_inbox "$home" reply --json "$id1" "answer one") \
-  || fail "identical reply is a replay"
-assert_equals "replay" "$(printf '%s' "$replay_reply" | json_get outcome)" \
-  "an identical reply is distinguishable as replay"
+assert_equals "$later" "$after_id" \
+  "a same-second reply recorded after the cursor is still delivered"
+
 set +e
-conflict=$(run_inbox "$home" reply "$id1" "a different answer" 2>&1)
+conflict=$(run_inbox "$home" reply "$earlier" "answer one" 2>&1)
 conflict_code=$?
 set -e
-expect_code 1 "$conflict_code" "a conflicting second reply is refused"
-assert_contains "$conflict" "already recorded" "conflicting reply names the existing record"
-pass "the reply channel is durable, cursor-readable, and idempotent on the same body"
+expect_code 1 "$conflict_code" "a second reply for the same note is refused"
+assert_contains "$conflict" "already recorded" "the refusal names the existing record"
+pass "the reply channel is durable and its cursor is a strict order"
 
 # --- readiness projection, including unknown -------------------------------
 
@@ -320,6 +366,24 @@ mkdir -p "$home/state/.lock"
 ready=$(run_inbox "$home" ready) || fail "ready should succeed for a directory lock"
 assert_equals "unreadable" "$(printf '%s' "$ready" | python3 -c 'import json,sys; print(json.load(sys.stdin)["lock"]["state"])')" \
   "a non-file lock is unreadable rather than held"
+# A Claude primary mid-turn runs no watcher process - its watcher is armed at
+# turn end - so the model-aware supervision verdict, not the pid-strict watcher
+# check, owns whether the wake will be drained.
+home=$(make_home ready-midturn)
+touch "$home/state/.last-watcher-beat"
+midturn=$(FM_SUPERVISION_MODEL=autoarm run_inbox "$home" ready) \
+  || fail "ready should succeed for a mid-turn autoarm primary"
+assert_equals "healthy" "$(printf '%s' "$midturn" | json_get wake_consumer state)" \
+  "a mid-turn autoarm primary with a fresh beacon has a healthy wake consumer"
+
+# A home that never ran a watcher has no observation, so it reports no age
+# rather than the missing-path sentinel.
+home=$(make_home ready-no-beacon)
+nobeat=$(run_inbox "$home" ready) || fail "ready should succeed with no beacon"
+assert_equals "no-beacon" "$(printf '%s' "$nobeat" | json_get wake_consumer reason)" \
+  "a home with no beacon says no-beacon"
+assert_equals "None" "$(printf '%s' "$nobeat" | json_get wake_consumer beacon_age_seconds)" \
+  "a beacon that does not exist has no age"
 pass "readiness says unknown (or not-receivable) instead of inferring liveness from a lock"
 
 # --- invalid input ----------------------------------------------------------
@@ -330,13 +394,35 @@ empty_out=$(run_inbox "$home" note --request-id x --json "   " 2>&1)
 empty_code=$?
 bad_out=$(run_inbox "$home" note --request-id '../etc/passwd' --json "nope" 2>&1)
 bad_code=$?
+# An empty request id must be refused, never treated as "no request id given":
+# falling through to the non-idempotent path would make a retry a second note.
+blank_out=$(run_inbox "$home" note --request-id '' --json "silently duplicated" 2>&1)
+blank_code=$?
 set -e
 expect_code 1 "$empty_code" "empty body is still refused"
 expect_code 1 "$bad_code" "path-like request ids are refused"
+expect_code 1 "$blank_code" "an empty request id is refused, not ignored"
 assert_contains "$empty_out" "empty" "empty-body refusal says the note was empty"
 assert_contains "$bad_out" "invalid request id" "unsafe request ids are rejected by name"
+assert_contains "$blank_out" "invalid request id" "an empty request id is rejected by name"
 assert_equals "0" "$(count_notes "$home")" "refusals must not write a note"
 pass "empty bodies and unsafe request ids are refused"
+
+# The voice handover passes a raw transcript as the first argument, so a body
+# that opens with a double dash is text, not an option.
+home=$(make_home dash-body)
+transcript="--- handover: ship the console backend --now"
+dash_out=$(run_inbox "$home" note "$transcript") \
+  || fail "a note body opening with dashes should be queued"
+assert_contains "$dash_out" "queued " "a dash-leading body is queued like any other"
+assert_equals "1" "$(count_notes "$home")" "a dash-leading body writes one note"
+dash_body=$(run_inbox "$home" receipts --all-pending | python3 -c 'import json,sys
+print(json.load(sys.stdin)["pending"][0]["body"])')
+assert_equals "$transcript" "$dash_body" "the transcript is stored verbatim"
+escaped=$(run_inbox "$home" note -- "--request-id is body text here") \
+  || fail "-- should end option parsing"
+assert_contains "$escaped" "queued " "-- escapes a body that looks like a flag"
+pass "a note body that opens with a double dash is queued as text"
 
 # --- drain still acks by moving the note ------------------------------------
 
