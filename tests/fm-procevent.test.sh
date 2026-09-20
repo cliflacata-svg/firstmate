@@ -2159,13 +2159,21 @@ assert_contains "$guard_out" "1 process-event source(s) registered" \
 pass "source-only homes trigger the general supervision guard"
 
 CLS="$TMP_ROOT/cls"
-printf 'session:\n  file: /a.html\n  status: feedback\nprompts[1]{uid}:\n  p1\n' > "$CLS"
-out=$("$ROOT/bin/fm-procevent-lavish.sh" classify "$CLS")
-assert_contains "$out" feedback "the adapter reads the indented session status"
+while IFS='|' read -r status expected; do
+  printf 'session:\n  file: /a.html\n  status: %s\n' "$status" > "$CLS"
+  out=$("$ROOT/bin/fm-procevent-lavish.sh" classify "$CLS") \
+    || fail "classify failed for handled Lavish status: $status"
+  [ "$out" = "$expected" ] \
+    || fail "handled Lavish status $status classified as '$out', expected '$expected'"
+done <<'EOF'
+feedback|feedback
+ended|ended
+waiting|waiting
+browser_disconnected|disconnected
+EOF
 printf 'session:\n  file: /a.html\n  status: feedback\nprompts[1]{text}:\n  No active Lavish Editor session; code: NOT_FOUND\n' > "$CLS"
-assert_contains "$("$ROOT/bin/fm-procevent-lavish.sh" classify "$CLS")" feedback "prompt text cannot override a valid session status"
-printf 'session:\n  file: /a.html\n  status: ended\n' > "$CLS"
-assert_contains "$("$ROOT/bin/fm-procevent-lavish.sh" classify "$CLS")" ended "an ended session classifies as ended"
+[ "$("$ROOT/bin/fm-procevent-lavish.sh" classify "$CLS")" = feedback ] \
+  || fail "prompt text overrode a valid session status"
 printf 'error: No active Lavish Editor session for this file\ncode: NOT_FOUND\n' > "$CLS"
 assert_contains "$("$ROOT/bin/fm-procevent-lavish.sh" classify "$CLS")" missing "an explicit missing session classifies as missing"
 printf 'garbage that is not a session block\n' > "$CLS"
@@ -2191,6 +2199,20 @@ assert_grep '100.99.161.42' "$HOST_SEEN" \
   "the adapter poll did not read config/lavish-axi-host before invoking lavish-axi"
 pass "Lavish poll uses the configured per-machine board address"
 
+HOST_BLOCKED_HOME="$TMP_ROOT/host-config-blocked"
+mkdir -p "$HOST_BLOCKED_HOME"
+printf '%s\n' 'not a directory' > "$HOST_BLOCKED_HOME/config"
+: > "$HOST_SEEN"
+host_blocked_status=0
+host_blocked_out=$(PATH="$HOST_BIN:$PATH" HOST_SEEN="$HOST_SEEN" LAVISH_AXI_HOST=wrong.example \
+  FM_HOME="$HOST_BLOCKED_HOME" "$ROOT/bin/fm-procevent-lavish.sh" poll "$HOST_ART" 2>&1) \
+  || host_blocked_status=$?
+[ "$host_blocked_status" -ne 0 ] || fail "an uninspectable Lavish host configuration was treated as absent"
+assert_contains "$host_blocked_out" "must be a readable regular file" \
+  "an uninspectable Lavish host configuration fails closed"
+[ ! -s "$HOST_SEEN" ] || fail "lavish-axi was called after host configuration inspection failed"
+pass "Lavish poll fails closed when host configuration cannot be inspected"
+
 # The adapter, not the runner, decides which results end a Lavish source. A
 # final feedback delivery still classifies as feedback for the handler while
 # reporting terminal, because the published poll marks that last delivery with
@@ -2211,8 +2233,6 @@ printf 'error: No active Lavish Editor session for this file\ncode: NOT_FOUND\n'
 printf 'session:\n  file: /a.html\n  status: waiting\n' > "$TRM"
 "$ROOT/bin/fm-procevent-lavish.sh" terminal "$TRM" && fail "a waiting session was reported terminal"
 printf 'session:\n  file: /a.html\n  status: browser_disconnected\n' > "$TRM"
-[ "$("$ROOT/bin/fm-procevent-lavish.sh" classify "$TRM")" = disconnected ] \
-  || fail "browser_disconnected was not classified as disconnected"
 "$ROOT/bin/fm-procevent-lavish.sh" terminal "$TRM" \
   && fail "a browser-disconnected session was reported terminal"
 printf 'garbage that is not a session block\n' > "$TRM"

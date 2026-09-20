@@ -136,20 +136,39 @@ die() { printf 'error: %s\n' "$1" >&2; exit 1; }
 usage() { sed -n '2,/^set -u$/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//'; exit 2; }
 
 apply_configured_lavish_host() {
-  local host_file host
+  local host_file host rc
   host_file="${FM_HOME%/}/config/lavish-axi-host"
-  if [ -e "$host_file" ] || [ -L "$host_file" ]; then
-    if [ ! -f "$host_file" ] || [ ! -r "$host_file" ]; then
-      die "config/lavish-axi-host must be a readable regular file"
-    fi
-    host=$(cat "$host_file") || die "cannot read config/lavish-axi-host"
-    case "$host" in
-      ''|*[[:space:][:cntrl:]]*)
-        die "config/lavish-axi-host must contain one non-empty address without whitespace"
-        ;;
-    esac
-    export LAVISH_AXI_HOST=$host
-  fi
+  host=$(perl -MFcntl=:mode -e '
+    use strict;
+    use warnings;
+    my ($path) = @ARGV;
+    if (!lstat $path) {
+      exit 10 if $!{ENOENT};
+      exit 11;
+    }
+    open my $file, "<", $path or exit 11;
+    my @stat = stat $file;
+    exit 11 unless @stat && S_ISREG($stat[2]);
+    while (1) {
+      my $count = read $file, my $chunk, 65536;
+      exit 12 unless defined $count;
+      last if $count == 0;
+      print $chunk or exit 12;
+    }
+  ' "$host_file")
+  rc=$?
+  case "$rc" in
+    0) ;;
+    10) return 0 ;;
+    11) die "config/lavish-axi-host must be a readable regular file" ;;
+    *) die "cannot read config/lavish-axi-host" ;;
+  esac
+  case "$host" in
+    ''|*[[:space:][:cntrl:]]*)
+      die "config/lavish-axi-host must contain one non-empty address without whitespace"
+      ;;
+  esac
+  export LAVISH_AXI_HOST=$host
 }
 
 # Canonical identity is physical, not the path string: Lavish itself keys a
