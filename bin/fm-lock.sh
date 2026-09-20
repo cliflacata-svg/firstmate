@@ -21,7 +21,14 @@
 # recorded pid is reclaimed and rewritten to this session's anchor.
 #
 # Usage: fm-lock.sh           acquire; exit 1 unless ownership is verified
-#        fm-lock.sh status    print holder and liveness; always exits 0
+#        fm-lock.sh status [--json]
+#                             print holder and liveness; always exits 0.
+#                             Human output is unchanged: free, unreadable, held
+#                             by a live harness, or stale (dead or not a harness).
+#                             --json prints schema fm-lock-status.v1 with an
+#                             honest unknown when the pid cannot be classified
+#                             without guessing. A held lock is not proof the
+#                             holder is consuming wakes.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,12 +49,42 @@ mkdir -p "$STATE" 2>/dev/null || {
 . "$SCRIPT_DIR/fm-session-lock-lib.sh"
 
 if [ "${1:-}" = "status" ]; then
-  if [ ! -f "$LOCK" ]; then echo "lock: free"; exit 0; fi
-  old=$(cat "$LOCK" 2>/dev/null) || {
-    echo "lock: unreadable"
+  shift
+  json=0
+  case "${1:-}" in
+    --json) json=1 ;;
+    '' ) ;;
+    *) echo "usage: fm-lock.sh status [--json]" >&2; exit 2 ;;
+  esac
+  fm_session_lock_inspect "$STATE"
+  if [ "$json" -eq 1 ]; then
+    command -v python3 >/dev/null 2>&1 || {
+      echo "error: python3 is required for fm-lock.sh status --json" >&2
+      exit 1
+    }
+    python3 - "$FM_LOCK_INSPECT_STATE" "$FM_LOCK_INSPECT_PID" "$FM_LOCK_INSPECT_LIVE_HARNESS" \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" <<'PY'
+import json, sys
+state, pid, live, observed = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+live_val = True if live == "true" else False if live == "false" else None
+pid_val = int(pid) if pid.isdigit() else None
+json.dump({
+    "schema": "fm-lock-status.v1",
+    "state": state,
+    "pid": pid_val,
+    "live_harness": live_val,
+    "observed_at": observed,
+}, sys.stdout, separators=(",", ":"))
+sys.stdout.write("\n")
+PY
     exit 0
-  }
-  if fm_harness_pid_alive "$old"; then echo "lock: held by live harness pid $old"; else echo "lock: stale (pid $old dead or not a harness)"; fi
+  fi
+  case "$FM_LOCK_INSPECT_STATE" in
+    free) echo "lock: free" ;;
+    unreadable) echo "lock: unreadable" ;;
+    held) echo "lock: held by live harness pid $FM_LOCK_INSPECT_PID" ;;
+    *) echo "lock: stale (pid $FM_LOCK_INSPECT_PID dead or not a harness)" ;;
+  esac
   exit 0
 fi
 
