@@ -147,8 +147,8 @@ out=$("$SCRIPT" inspect-events --kind codex "$CAPTURES/codex-luna-pong.jsonl" \
 expect_code 1 "$code" "codex capture"
 assert_contains "$out" 'status=violates' "codex capture violates"
 assert_contains "$out" 'input_tokens=6147' "codex capture reports 6147 input tokens"
-assert_contains "$out" 'violations=input_tokens,tool_definitions_unobservable' \
-  "codex capture names input and unobservable tool definitions"
+assert_contains "$out" 'violations=input_tokens,requests_unobservable,tool_definitions_unobservable' \
+  "codex capture names input, unobservable request count, and unobservable tool definitions"
 assert_contains "$out" 'tool_definitions=unobserved' "codex events cannot show tool definitions"
 assert_contains "$out" 'tool_executions=0' "codex capture had no tool-execution items"
 pass "recorded Luna JSONL is reported as input-over-budget"
@@ -161,8 +161,8 @@ out=$("$SCRIPT" inspect-events --kind codex "$TMP_ROOT/codex-small.jsonl" \
   2>"$TMP_ROOT/inspect-codex-small.err") || code=$?
 expect_code 1 "$code" "codex capture under caps"
 assert_contains "$out" 'status=violates' "codex capture under the token caps still cannot honour"
-assert_contains "$out" 'violations=tool_definitions_unobservable' \
-  "codex capture under caps names unobservable tool definitions"
+assert_contains "$out" 'violations=requests_unobservable,tool_definitions_unobservable' \
+  "codex capture under caps names unobservable request count and tool definitions"
 pass "a Codex capture under the token caps never reports honours"
 
 printf '%s\n' '{"type":"turn.started"}' \
@@ -211,6 +211,26 @@ assert_contains "$out" 'tool_definitions=unobserved' "missing tools list is unob
 assert_contains "$out" 'violations=tool_definitions_unobservable' \
   "missing tools list is a violation"
 pass "a Grok record with no tools list never reports honours"
+
+code=0
+out=$("$SCRIPT" inspect-events --kind grok "$CAPTURES/synthetic-truncated.jsonl" \
+  2>"$TMP_ROOT/inspect-truncated.err") || code=$?
+expect_code 1 "$code" "truncated grok capture"
+assert_contains "$out" 'status=violates' "truncated grok capture cannot honour"
+assert_contains "$out" 'completions=0' "truncated grok capture has no end record"
+assert_contains "$out" 'violations=requests_unobservable' \
+  "truncated grok capture names the unobservable single request"
+pass "a Grok capture with usage but no end record never reports honours"
+
+printf '%s\n' '{"type":"available_commands","tools":[],"commands":[]}' \
+  '{"type":"end","usage":{"input_tokens":400,"output_tokens":20},"num_turns":1,"modelUsage":{"a":{"modelCalls":1}}}' \
+  '{"type":"end","usage":{"input_tokens":400,"output_tokens":20},"num_turns":1,"modelUsage":{"a":{"modelCalls":1}}}' \
+  > "$TMP_ROOT/grok-two-ends.jsonl"
+code=0
+out=$("$SCRIPT" inspect-events --kind grok "$TMP_ROOT/grok-two-ends.jsonl" 2>/dev/null) || code=$?
+expect_code 1 "$code" "grok capture with two end records"
+assert_contains "$out" 'violations=multiple_requests' "two end records are multiple requests"
+pass "a Grok capture with two completed requests never reports honours"
 
 code=0
 "$SCRIPT" inspect-events --kind grok "$TMP_ROOT/transcript.link" \

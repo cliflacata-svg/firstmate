@@ -255,6 +255,7 @@ output_tokens = 0
 reasoning_tokens = 0
 turns = 0
 model_calls = 0
+completions = 0
 tool_definitions = 0
 tools_listed = False
 tool_executions = 0
@@ -291,9 +292,11 @@ for ev in events:
         turns = max(turns, as_int(ev.get("num_turns")))
         model_usage = ev.get("modelUsage")
         if isinstance(model_usage, dict):
-            for row in model_usage.values():
-                if isinstance(row, dict):
-                    model_calls = max(model_calls, as_int(row.get("modelCalls")))
+            model_calls = max(model_calls, sum(
+                as_int(row.get("modelCalls")) for row in model_usage.values() if isinstance(row, dict)
+            ))
+    if et == ("turn.completed" if kind == "codex" else "end"):
+        completions += 1
     if et == "turn.started":
         turns += 1
     if et == "available_commands":
@@ -315,8 +318,10 @@ if input_tokens > max_in:
     violations.append("input_tokens")
 if combined_out > max_out:
     violations.append("output_tokens")
-if turns > 1 or model_calls > 1:
+if turns > 1 or model_calls > 1 or completions > 1:
     violations.append("multiple_requests")
+elif kind == "codex" or completions != 1 or turns != 1 or model_calls != 1:
+    violations.append("requests_unobservable")
 if not tools_listed:
     violations.append("tool_definitions_unobservable")
 elif tool_definitions > 0:
@@ -334,6 +339,7 @@ print(f"output_tokens={output_tokens}")
 print(f"reasoning_tokens={reasoning_tokens}")
 print(f"turns={turns}")
 print(f"model_calls={model_calls}")
+print(f"completions={completions}")
 print(f"tool_definitions={tool_definitions if tools_listed else 'unobserved'}")
 print(f"tool_executions={tool_executions}")
 print(f"violations={','.join(violations) if violations else 'none'}")
