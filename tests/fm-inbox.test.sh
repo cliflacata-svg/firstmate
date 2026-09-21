@@ -344,9 +344,6 @@ can=$(printf '%s' "$ready" | python3 -c 'import json,sys; print(json.load(sys.st
 [ "$can" = "False" ] || [ "$can" = "unknown" ] \
   || fail "unknown lock must not claim can_receive true (got $can)"
 
-lock_json=$(run_lock "$home" status --json) || fail "lock status --json should succeed"
-assert_equals "unknown" "$(printf '%s' "$lock_json" | json_get state)" \
-  "lock status --json reports unknown for a live non-harness pid"
 human_lock=$(run_lock "$home" status) || fail "lock status should succeed"
 assert_contains "$human_lock" "stale (pid $$ dead or not a harness)" \
   "human lock status keeps its historical stale wording"
@@ -377,13 +374,56 @@ assert_equals "healthy" "$(printf '%s' "$midturn" | json_get wake_consumer state
   "a mid-turn autoarm primary with a fresh beacon has a healthy wake consumer"
 
 # A home that never ran a watcher has no observation, so it reports no age
-# rather than the missing-path sentinel.
+# rather than the missing-path sentinel. With no lock holder the model is
+# unknown for this home, which is the honest caller path.
 home=$(make_home ready-no-beacon)
 nobeat=$(run_inbox "$home" ready) || fail "ready should succeed with no beacon"
-assert_equals "no-beacon" "$(printf '%s' "$nobeat" | json_get wake_consumer reason)" \
-  "a home with no beacon says no-beacon"
+assert_equals "supervision-model-unknown-for-home" \
+  "$(printf '%s' "$nobeat" | json_get wake_consumer reason)" \
+  "no lock holder means the home's supervision model is unknown"
 assert_equals "None" "$(printf '%s' "$nobeat" | json_get wake_consumer beacon_age_seconds)" \
   "a beacon that does not exist has no age"
+
+# The intended caller (HTTP backend, ssh host fm-inbox.sh ready) does not set
+# FM_SUPERVISION_MODEL. A live non-harness lock pid must not invent a model
+# from the caller's own process tree.
+home=$(make_home ready-no-override)
+printf '%s\n' "$$" > "$home/state/.lock"
+touch "$home/state/.last-watcher-beat"
+no_override=$(run_inbox "$home" ready) || fail "ready should succeed with no model override"
+assert_equals "unknown" "$(printf '%s' "$no_override" | json_get wake_consumer state)" \
+  "without a lock-holder harness, wake-consumer is unknown"
+assert_equals "supervision-model-unknown-for-home" \
+  "$(printf '%s' "$no_override" | json_get wake_consumer reason)" \
+  "the unknown reason names that the model could not be determined for this home"
+can=$(printf '%s' "$no_override" | json_get can_receive)
+assert_equals "unknown" "$can" "unknown lock plus unknown consumer is not can_receive true"
+
+# A live lock holder whose ancestry names a known harness, plus a fresh
+# beacon, is the yes path: the inspected home can receive work.
+home=$(make_home ready-holder)
+# A process whose ps comm is the harness name, so lock inspect and
+# fm-harness.sh ancestry both classify it without PATH tricks.
+perl -e '$0="claude"; sleep 60' &
+holder_pid=$!
+# Give ps a moment to report the renamed comm.
+sleep 0.2
+kill_holder() {
+  kill "$holder_pid" 2>/dev/null || true
+  wait "$holder_pid" 2>/dev/null || true
+}
+trap 'kill_holder; fm_test_cleanup' EXIT
+printf '%s\n' "$holder_pid" > "$home/state/.lock"
+touch "$home/state/.last-watcher-beat"
+held=$(run_inbox "$home" ready) || fail "ready should succeed for a lock-holder harness"
+assert_equals "held" "$(printf '%s' "$held" | python3 -c 'import json,sys; print(json.load(sys.stdin)["lock"]["state"])')" \
+  "a live claude-named holder is a held lock"
+assert_equals "healthy" "$(printf '%s' "$held" | json_get wake_consumer state)" \
+  "lock-holder ancestry plus a fresh beacon is a healthy wake consumer"
+assert_equals "True" "$(printf '%s' "$held" | json_get can_receive)" \
+  "a held lock with a healthy wake consumer can receive work"
+kill_holder
+trap fm_test_cleanup EXIT
 pass "readiness says unknown (or not-receivable) instead of inferring liveness from a lock"
 
 # --- invalid input ----------------------------------------------------------
