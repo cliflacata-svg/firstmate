@@ -1,0 +1,11 @@
+degraded-fleet: {"readiness":"Primary readiness unknown · orders may remain pending","alert":"(hidden)","decisions":"1","landed":"Durable order and reply contract\n(main)\ninbox-contract","page":false}
+screenshot /home/clif/.no-mistakes/evidence/01M31ZAVFYPBBGHK354PXSMHSP/05-readiness-unavailable-fleet.png
+degraded-work: {"orderReadiness":"Primary readiness unknown · orders may remain pending. Observed Unknown time. Lock: unknown; wake consumer: unknown; posture: unknown.","messages":3}
+screenshot /home/clif/.no-mistakes/evidence/01M31ZAVFYPBBGHK354PXSMHSP/06-readiness-unavailable-conversation.png
+## /api/ready on this instance
+{"error":"Readiness unavailable; receiving state unknown"} HTTP 503
+## /api/fleet carries no action strings
+0
+## marker files created by action strings (expect none)
+none
+{"schema":"fm-console-order.v1","request_id":"live-degraded-1","id":"1789994673-xsuhsG","outcome":"created","saved":true,"announced":true,"acknowledged":false,"replied":false,"readiness":{"schema":"fm-console-ready.v1","observed_at":"2026-09-21T12:44:33+00:00","can_receive":"unknown","lock":"unknown","wake_consumer":"unknown","posture":"unknown"},"pending":true} HTTP 202

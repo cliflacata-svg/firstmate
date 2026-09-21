@@ -1,0 +1,69 @@
+## Bind address
+LISTEN 0      5           127.0.0.1:18765      0.0.0.0:*   
+## Unauthenticated requests (expect 401)
+/                401
+/app.js          401
+/api/fleet       401
+/api/ready       401
+/api/receipts    401
+/artifact/foo    401
+/nope            401
+## Wrong password
+401
+## Foreign Host header
+403
+## Cross-site fetch
+403
+## Order without CSRF
+{"error":"CSRF check failed"} 403
+## Order from foreign origin
+{"error":"cross-origin request refused"} 403
+## Order with extra field
+{"error":"invalid order"} 400
+## Fleet (first poll, then after collection)
+{"snapshot":null,"observed_at":null,"served_at":"2026-09-21T12:42:22+00:00","collecting":true,"error":"Awaiting first observation"}
+{
+  "snapshot": {
+    "schema": "fm-console-fleet.v1",
+    "observed_at": "2026-09-21T12:42:22Z",
+    "in_flight": [],
+    "secondmates": [],
+    "decisions": [
+      {
+        "id": "vps-exposure",
+        "summary": "Decide private exposure for the console: captain choice pending",
+        "owner": "(main)"
+      }
+    ],
+    "gates": [
+      {
+        "id": "caddy-gate",
+        "title": "Configure proxy",
+        "reason": "-",
+        "owner": "(main)"
+      }
+    ],
+    "landed": [
+      {
+        "id": "inbox-contract",
+        "what": "Durable order and reply contract",
+        "owner": "(main)",
+        "url": ""
+      }
+    ],
+    "omitted": [
+      "backlog item bodies",
+      "task paths",
+      "watch/steer actions",
+      "healthy endpoint detail",
+      "full scout-report inventory",
+      "live PR discovery + checks"
+    ]
+  },
+  "observed_at": "2026-09-21T12:42:22Z",
+  "served_at": "2026-09-21T12:42:25+00:00",
+  "collecting": false,
+  "error": ""
+}
+## Ready
+{"schema":"fm-console-ready.v1","observed_at":"2026-09-21T12:42:25Z","can_receive":false,"lock":"free","wake_consumer":"unknown","posture":"present"}

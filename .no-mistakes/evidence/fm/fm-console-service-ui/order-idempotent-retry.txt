@@ -1,0 +1,7 @@
+## Same request_id posted twice (retry)
+{"outcome":"created","id":"1789994639-PK6Veh","saved":true,"announced":true,"pending":true,"can_receive":false}
+{"outcome":"replay","id":"1789994639-PK6Veh","saved":true,"announced":true,"pending":true,"can_receive":false}
+## notes on disk carrying request_id live-retry-1
+1
+## wake-queue entries
+2

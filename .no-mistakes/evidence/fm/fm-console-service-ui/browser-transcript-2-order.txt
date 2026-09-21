@@ -1,0 +1,3 @@
+submit: "clicked"
+after-submit: {"result":"Order saved · 1789994628-XfCIKM. Pending: receipt does not prove delivery to a primary.","draft":"","retryKey":null,"conversation":"Order\n9/21/2026, 8:43:48 AM\n\nStand up the console on the VPS.\nKeep it loopback-only; see /etc/caddy/Caddyfile for later.\n\nAnnounced · awaiting acknowledgement · 1789994628-XfCIKM"}
+screenshot /home/clif/.no-mistakes/evidence/01M31ZAVFYPBBGHK354PXSMHSP/03-do-work-order-saved.png

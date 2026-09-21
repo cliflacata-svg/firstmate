@@ -1,0 +1,8 @@
+fleet: {"readiness":"Primary cannot receive work now · orders remain pending","observation":"Observed 9/21/2026, 8:42:22 AM · refreshing","alertHidden":false,"decisions":"Decide private exposure for the console: captain choice pending\n(main)\nvps-exposure\n\nThe decision remains open until Firstmate records its answer.","gates":"Configure proxy\n(main)\ncaddy-gate\n\n-","landed":"Durable order and reply contract\n(main)\ninbox-contract","omissions":"backlog item bodies\ntask paths\nwatch/steer actions\nhealthy endpoint detail\nfull scout-report inventory\nlive PR discovery + checks"}
+screenshot /home/clif/.no-mistakes/evidence/01M31ZAVFYPBBGHK354PXSMHSP/01-fleet-overview.png
+quick-ask: {"visible":true,"text":"EXPLICIT LANE\n\nQuick ask\nDisabled\nCost ceiling unresolved\n\nMeasured single questions used 6,147 input tokens through Codex Luna and 12,957 through Grok, above the 2,000-token target. This lane stays disabled while its ceiling is decided.\n\nNo question is sent from this lane.","inputs":0}
+screenshot /home/clif/.no-mistakes/evidence/01M31ZAVFYPBBGHK354PXSMHSP/02-quick-ask-disabled.png
+do-work-open: {"orderReadiness":"Primary cannot receive work now · orders remain pending. Observed 9/21/2026, 8:43:13 AM. Lock: free; wake consumer: unknown; posture: present.","conversation":"No durable orders or answers shown yet."}
+submit: "Uncaught"
+after-submit: {"result":"","draft":"","retryKey":null,"conversation":"No durable orders or answers shown yet."}
+screenshot /home/clif/.no-mistakes/evidence/01M31ZAVFYPBBGHK354PXSMHSP/03-do-work-order-saved.png

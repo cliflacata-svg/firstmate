@@ -1,0 +1,13 @@
+## durable note on disk
+1789994628-XfCIKM.note
+id=1789994628-XfCIKM
+at=2026-09-21T12:43:48Z
+source=text
+announce_marker=1
+request_id=004ad834-c4db-406a-9a7c-1948f8b8892f
+--
+Stand up the console on the VPS.
+Keep it loopback-only; see /etc/caddy/Caddyfile for later.
+
+## wake queue
+1789994628	1	check	inbox:1789994628-XfCIKM	check: captain inbox note 1789994628-XfCIKM - Stand up the console on the VPS. Keep it loopback-only; see /etc/caddy/Caddyfile for later.
