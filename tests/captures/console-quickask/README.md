@@ -14,6 +14,6 @@ No credentials were copied.
 | --- | --- | --- |
 | `codex-luna-pong.jsonl` | `codex-cli 0.154.0` `codex exec --json -m gpt-5.6-luna` with `--ephemeral --ignore-user-config` and feature disables, stdin closed | Unchanged stdout of the isolated one-word probe |
 | `grok-verbatim-pong.jsonl` | `grok 1.0.40` `-p` with `--verbatim --no-memory --no-subagents --system-prompt-override --max-turns 1` | Compacted stdout: one `available_commands` line, the `usage` line, and the `end` line. The usage `signature` field is replaced with `redacted`. Thought/text deltas are omitted because they are not load-bearing for the bound |
-| `synthetic-honours.jsonl` | none | Counterfactual Grok-shaped `end` record under the caps, with no tool list, so `inspect-events` can return success. Not a captured live run |
+| `synthetic-honours.jsonl` | none | Counterfactual Grok-shaped empty `available_commands` tool list and `end` record under the caps, so `inspect-events` can return success. Not a captured live run |
 
 Update the verification record when refreshing these captures.

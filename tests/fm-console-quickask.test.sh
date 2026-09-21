@@ -119,7 +119,25 @@ out=$(PATH="$FAKEBIN:$PATH" "$SCRIPT" ask --question "$big_question" --excerpt "
   2>"$TMP_ROOT/ask-assembled.err") || code=$?
 expect_code 1 "$code" "assembled-over-budget ask"
 assert_contains "$out" 'reason=assembled-over-budget' "huge question hits assembled-over-budget"
+assembled_err=$(cat "$TMP_ROOT/ask-assembled.err")
+assert_contains "$assembled_err" 'before any runner overhead' \
+  "assembled refusal describes only the local prompt estimate"
+assert_not_contains "$assembled_err" 'including runner overhead' \
+  "assembled refusal must not claim to include runner overhead"
 pass "assembled prompt over 2000 estimated tokens is refused"
+
+reason_of() {
+  printf '%s\n' "$1" | sed -n 's/^reason=//p'
+}
+r_runner=$(reason_of "$(PATH="$FAKEBIN:$PATH" "$SCRIPT" ask --question 'hi' 2>/dev/null)")
+r_excerpt=$(reason_of "$(PATH="$FAKEBIN:$PATH" "$SCRIPT" ask --question 'hi' --excerpt "$long_excerpt" 2>/dev/null)")
+r_assembled=$(reason_of "$(PATH="$FAKEBIN:$PATH" "$SCRIPT" ask --question "$big_question" --excerpt "$medium_excerpt" 2>/dev/null)")
+[ "$r_runner" = runner-unenforced ] || fail "runner refusal reason: $r_runner"
+[ "$r_excerpt" = excerpt-over-budget ] || fail "excerpt refusal reason: $r_excerpt"
+[ "$r_assembled" = assembled-over-budget ] || fail "assembled refusal reason: $r_assembled"
+[ "$(printf '%s\n' "$r_runner" "$r_excerpt" "$r_assembled" | sort -u | wc -l)" -eq 3 ] \
+  || fail "the three refusal reasons must be distinct"
+pass "runner-unenforced, excerpt-over-budget, and assembled-over-budget are distinguishable"
 
 # --- inspect-events against recorded runner output -------------------------
 
@@ -129,9 +147,30 @@ out=$("$SCRIPT" inspect-events --kind codex "$CAPTURES/codex-luna-pong.jsonl" \
 expect_code 1 "$code" "codex capture"
 assert_contains "$out" 'status=violates' "codex capture violates"
 assert_contains "$out" 'input_tokens=6147' "codex capture reports 6147 input tokens"
-assert_contains "$out" 'violations=input_tokens' "codex capture violation is input_tokens"
+assert_contains "$out" 'violations=input_tokens,tool_definitions_unobservable' \
+  "codex capture names input and unobservable tool definitions"
+assert_contains "$out" 'tool_definitions=unobserved' "codex events cannot show tool definitions"
 assert_contains "$out" 'tool_executions=0' "codex capture had no tool-execution items"
 pass "recorded Luna JSONL is reported as input-over-budget"
+
+printf '%s\n' '{"type":"turn.started"}' \
+  '{"type":"turn.completed","usage":{"input_tokens":400,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":6,"reasoning_output_tokens":0}}' \
+  > "$TMP_ROOT/codex-small.jsonl"
+code=0
+out=$("$SCRIPT" inspect-events --kind codex "$TMP_ROOT/codex-small.jsonl" \
+  2>"$TMP_ROOT/inspect-codex-small.err") || code=$?
+expect_code 1 "$code" "codex capture under caps"
+assert_contains "$out" 'status=violates' "codex capture under the token caps still cannot honour"
+assert_contains "$out" 'violations=tool_definitions_unobservable' \
+  "codex capture under caps names unobservable tool definitions"
+pass "a Codex capture under the token caps never reports honours"
+
+printf '%s\n' '{"type":"turn.started"}' \
+  '{"type":"turn.completed","usage":{"input_tokens":400,"cached_input_tokens":0,"cache_write_input_tokens":5000,"output_tokens":6,"reasoning_output_tokens":0}}' \
+  > "$TMP_ROOT/codex-cache-write.jsonl"
+out=$("$SCRIPT" inspect-events --kind codex "$TMP_ROOT/codex-cache-write.jsonl" 2>/dev/null) || true
+assert_contains "$out" 'input_tokens=5400' "codex cache-write input is counted"
+pass "Codex cache-write input counts toward the input cap"
 
 code=0
 out=$("$SCRIPT" inspect-events --kind grok "$CAPTURES/grok-verbatim-pong.jsonl" \
@@ -151,6 +190,27 @@ expect_code 0 "$code" "synthetic honours"
 assert_contains "$out" 'status=honours' "synthetic record can honour"
 assert_contains "$out" 'violations=none' "synthetic record has no violations"
 pass "inspect-events can return honours on a record under the caps"
+
+printf '%s\n' '{"type":"available_commands","tools":[],"commands":[]}' \
+  '{"type":"end","usage":{"input_tokens":400,"cache_read_input_tokens":0,"cache_creation_input_tokens":5000,"output_tokens":20,"reasoning_tokens":0},"num_turns":1,"modelUsage":{"example":{"modelCalls":1}}}' \
+  > "$TMP_ROOT/grok-cache-creation.jsonl"
+code=0
+out=$("$SCRIPT" inspect-events --kind grok "$TMP_ROOT/grok-cache-creation.jsonl" \
+  2>"$TMP_ROOT/inspect-cc.err") || code=$?
+expect_code 1 "$code" "grok cache-creation input"
+assert_contains "$out" 'input_tokens=5400' "grok cache-creation input is counted"
+assert_contains "$out" 'violations=input_tokens' "grok cache-creation input violates the cap"
+pass "Grok cache-creation input counts toward the input cap"
+
+grep -v available_commands "$CAPTURES/synthetic-honours.jsonl" > "$TMP_ROOT/grok-no-tools-list.jsonl"
+code=0
+out=$("$SCRIPT" inspect-events --kind grok "$TMP_ROOT/grok-no-tools-list.jsonl" \
+  2>"$TMP_ROOT/inspect-nolist.err") || code=$?
+expect_code 1 "$code" "grok record without a tools list"
+assert_contains "$out" 'tool_definitions=unobserved' "missing tools list is unobserved"
+assert_contains "$out" 'violations=tool_definitions_unobservable' \
+  "missing tools list is a violation"
+pass "a Grok record with no tools list never reports honours"
 
 code=0
 "$SCRIPT" inspect-events --kind grok "$TMP_ROOT/transcript.link" \

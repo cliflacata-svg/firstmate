@@ -12,12 +12,13 @@
 #
 # Prefer Codex GPT-5.6 Luna through the existing ChatGPT Plus/Codex
 # subscription if a supported runner can enforce that bound. On the installed
-# CLIs verified 2026-09-21 (codex-cli 0.154.0 and grok 1.0.40), neither can:
-# an isolated one-word Luna exec used 6147 input tokens, and an isolated Grok
-# --verbatim --no-memory probe used 12957 input tokens while still advertising
-# tool definitions and inherited skills. No supported switch caps output at 512
-# tokens. This script therefore refuses to invoke a model rather than shipping
-# a full agent under a cheap label.
+# CLIs verified 2026-09-21 (codex-cli 0.154.0 and grok 1.0.40), neither can.
+# Measured per-call input tokens on 2026-09-21, against the 2000-token cap:
+#   Codex GPT-5.6 Luna: 6147 (isolated one-word exec)
+#   Grok:               12957 (isolated --verbatim --no-memory probe, still
+#                       advertising tool definitions and inherited skills)
+# No supported switch caps output at 512 tokens. This script therefore refuses
+# to invoke a model rather than shipping a full agent under a cheap label.
 #
 # Evidence: docs/verification/console-quickask.md
 # This is not fm-inbox.sh ask (Bedrock/AWS). Do not route Quick ask there.
@@ -31,7 +32,9 @@
 # ask assembles the prompt, estimates caller-supplied tokens with
 # ceil(UTF-8 bytes / 3) from bin/fm-startup-memory-budget-lib.sh, and refuses
 # without a provider call when the excerpt, the assembled prompt, or the
-# installed runner cannot honour the bound.
+# installed runner cannot honour the bound. The assembled-prompt check covers
+# only the locally assembled prompt; runner overhead is not included, so passing
+# it does not prove the 2000-token cap.
 #
 # inspect-events reads a runner's own structured JSONL and reports whether
 # those recorded events honour the bound. It is the test and evidence path
@@ -176,7 +179,7 @@ cmd_ask() {
   fi
   if [ "$a_tokens" -gt "$MAX_INPUT_TOKENS" ]; then
     emit_ask_refusal assembled-over-budget "$q_tokens" "$e_tokens" "$a_tokens"
-    printf 'error: assembled prompt is %s estimated tokens; cap is %s including runner overhead. Refusing rather than growing the request.\n' \
+    printf 'error: locally assembled prompt is %s estimated tokens before any runner overhead; cap is %s. Refusing rather than growing the request.\n' \
       "$a_tokens" "$MAX_INPUT_TOKENS" >&2
     exit 1
   fi
@@ -253,6 +256,7 @@ reasoning_tokens = 0
 turns = 0
 model_calls = 0
 tool_definitions = 0
+tools_listed = False
 tool_executions = 0
 def as_int(value):
     if isinstance(value, bool) or value is None:
@@ -261,15 +265,16 @@ def as_int(value):
         return int(value)
     return 0
 
+if kind == "codex":
+    ADDITIVE_INPUT = ("input_tokens", "cached_input_tokens", "cache_write_input_tokens")
+else:
+    ADDITIVE_INPUT = ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
+
 def take_usage(usage):
     global input_tokens, output_tokens, reasoning_tokens
     if not isinstance(usage, dict):
         return
-    input_tokens = max(
-        input_tokens,
-        as_int(usage.get("input_tokens")) + as_int(usage.get("cache_read_input_tokens")),
-        as_int(usage.get("input_tokens")) + as_int(usage.get("cached_input_tokens")),
-    )
+    input_tokens = max(input_tokens, sum(as_int(usage.get(k)) for k in ADDITIVE_INPUT))
     output_tokens = max(output_tokens, as_int(usage.get("output_tokens")))
     reasoning_tokens = max(
         reasoning_tokens,
@@ -293,7 +298,8 @@ for ev in events:
         turns += 1
     if et == "available_commands":
         tools = ev.get("tools")
-        if isinstance(tools, list) and tools:
+        if isinstance(tools, list):
+            tools_listed = True
             tool_definitions = max(tool_definitions, len(tools))
     if et in ("tool_call", "tool_call_update"):
         tool_executions += 1
@@ -303,9 +309,6 @@ for ev in events:
         if itype in ("command_execution", "mcp_tool_call", "web_search", "file_change"):
             tool_executions += 1
 
-if kind == "codex" and turns == 0:
-    turns = sum(1 for ev in events if isinstance(ev, dict) and ev.get("type") == "turn.started")
-
 combined_out = output_tokens + reasoning_tokens
 violations = []
 if input_tokens > max_in:
@@ -314,7 +317,9 @@ if combined_out > max_out:
     violations.append("output_tokens")
 if turns > 1 or model_calls > 1:
     violations.append("multiple_requests")
-if tool_definitions > 0:
+if not tools_listed:
+    violations.append("tool_definitions_unobservable")
+elif tool_definitions > 0:
     violations.append("tool_definitions")
 if tool_executions > 0:
     violations.append("tool_execution")
@@ -329,7 +334,7 @@ print(f"output_tokens={output_tokens}")
 print(f"reasoning_tokens={reasoning_tokens}")
 print(f"turns={turns}")
 print(f"model_calls={model_calls}")
-print(f"tool_definitions={tool_definitions}")
+print(f"tool_definitions={tool_definitions if tools_listed else 'unobserved'}")
 print(f"tool_executions={tool_executions}")
 print(f"violations={','.join(violations) if violations else 'none'}")
 print(f"max_input_tokens={max_in}")
