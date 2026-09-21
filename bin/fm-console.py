@@ -75,8 +75,6 @@ def fleet_view(raw):
                       ("landed", raw.get("landed")):
         if isinstance(value, list) and len(value) > 30:
             result["omitted"].append(f"Console displays the first 30 {key} rows")
-    for item in result["landed"]:
-        item["url"] = ""
     links = {}
     for item in raw.get("recorded_prs", [])[:30] if isinstance(raw.get("recorded_prs"), list) else []:
         if isinstance(item, dict) and isinstance(item.get("id"), str) and isinstance(item.get("url"), str):
@@ -96,17 +94,20 @@ def fleet_view(raw):
 def receipt_view(raw):
     if not isinstance(raw, dict) or raw.get("schema") != "fm-inbox-receipts.v1":
         raise ValueError("invalid receipts schema")
+    def body(item):
+        return item["body"][:16000] if isinstance(item.get("body"), str) else ""
     def note(item):
         reply = item.get("reply") if isinstance(item.get("reply"), dict) else None
         return {
-            **fields(item, {"id": 100, "at": 40, "request_id": 128, "body": 16000}),
+            **fields(item, {"id": 100, "at": 40, "request_id": 128}),
+            "body": body(item),
             "saved": True,
             "announced": item.get("announced") if item.get("announced") in (True, False, None) else None,
             "acknowledged": item.get("acknowledged") is True,
             "replied": reply is not None,
         }
     def reply(item):
-        return fields(item, {"id": 100, "at": 40, "body": 16000, "cursor": 20})
+        return {**fields(item, {"id": 100, "at": 40, "cursor": 20}), "body": body(item)}
     omitted = disclosures(raw.get("omitted"))
     for group in ("pending", "handled"):
         for item in raw.get(group, [])[:20]:

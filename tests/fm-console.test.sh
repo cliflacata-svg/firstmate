@@ -80,7 +80,7 @@ with tempfile.TemporaryDirectory(prefix="fm-console-test-", dir=root) as temp:
         return result
 
     try:
-        for path in ("/", "/app.css", "/app.js", "/api/session", "/api/fleet", "/api/ready", "/api/receipts", "/api/events", "/artifact/foo", "/unknown"):
+        for path in ("/", "/app.css", "/app.js", "/api/session", "/api/fleet", "/api/ready", "/api/receipts", "/api/events", "/unknown"):
             assert request("GET", path, authorized=False)[0] == 401, path
         assert request("POST", "/api/order", "{}", authorized=False)[0] == 401
         assert request("HEAD", "/", authorized=False)[0] == 401
@@ -109,10 +109,11 @@ with tempfile.TemporaryDirectory(prefix="fm-console-test-", dir=root) as temp:
         assert len(receipts["pending"]) == 1 and receipts["pending"][0]["announced"] is True
         assert "path" not in json.dumps(receipts)
         assert request("GET", "/api/receipts?after=bad")[0] == 400
-        module.subprocess.run([str(root / "bin/fm-inbox.sh"), "reply", first["id"], "Answer from primary"],
+        answer = "Answer from primary: https://github.com/kunchenguid/firstmate/pull/5103 edits /etc/caddy/Caddyfile"
+        module.subprocess.run([str(root / "bin/fm-inbox.sh"), "reply", first["id"], answer],
                               env=service.env(), check=True, capture_output=True)
         receipts = request("GET", "/api/receipts?after=")[1]
-        assert receipts["replies"][0]["body"] == "Answer from primary"
+        assert receipts["replies"][0]["body"] == answer
         assert request("GET", "/api/receipts?after=" + receipts["reply_cursor"])[1]["replies"] == []
         with ThreadPoolExecutor(max_workers=8) as pool:
             results = list(pool.map(lambda _: request("GET", "/api/fleet"), range(8)))

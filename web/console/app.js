@@ -91,7 +91,7 @@ async function refresh() {
   polling = true;
   let waitingOnFirstObservation = false;
   try {
-    const [fleet, ready] = await Promise.all([api("/api/fleet"), api("/api/ready")]);
+    const [fleet, ready] = await Promise.all([api("/api/fleet"), api("/api/ready").catch(() => ({can_receive: "unknown"}))]);
     waitingOnFirstObservation = fleet.collecting && !fleet.snapshot;
     renderFleet(fleet);
     renderReady(ready);
