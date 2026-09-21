@@ -1,0 +1,1 @@
+{"type":"end","stopReason":"end_turn","usage":{"input_tokens":400,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":20,"reasoning_tokens":0,"total_tokens":420},"num_turns":1,"modelUsage":{"example":{"inputTokens":400,"outputTokens":20,"cacheReadInputTokens":0,"cacheCreationInputTokens":0,"modelCalls":1}}}
