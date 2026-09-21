@@ -1,0 +1,176 @@
+== S1 idempotent retry of a multiline order ==
+$ fm-inbox.sh note --request-id web-req-1 --json -
+{"schema":"fm-inbox-note.v1","outcome":"created","id":"1789967985-krv5Ab","request_id":"web-req-1","saved":true,"announced":true,"acknowledged":false,"path":"/tmp/fm-console-live.vRrqgU/state/inbox/1789967985-krv5Ab.note"}
+[exit 0]
+$ fm-inbox.sh note --request-id web-req-1 --json -
+{"schema":"fm-inbox-note.v1","outcome":"replay","id":"1789967985-krv5Ab","request_id":"web-req-1","saved":true,"announced":true,"acknowledged":false,"path":"/tmp/fm-console-live.vRrqgU/state/inbox/1789967985-krv5Ab.note"}
+[exit 0]
+wake rows: 1  notes pending: 1  handled: 0
+
+== S2 saved but wake failed -> exit 3, repair without second note ==
+$ fm-inbox.sh note --request-id web-req-2 --json fix the flaky test
+/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3160NPCGZS4B894JST8VVTQ/bin/fm-wake-lib.sh: line 1844: /tmp/fm-console-live.vRrqgU/state/.wake-queue: Permission denied
+{"schema":"fm-inbox-note.v1","outcome":"created","id":"1789967986-ajAf6V","request_id":"web-req-2","saved":true,"announced":false,"acknowledged":false,"path":"/tmp/fm-console-live.vRrqgU/state/inbox/1789967986-ajAf6V.note"}
+fm-inbox: note 1789967986-ajAf6V is saved at /tmp/fm-console-live.vRrqgU/state/inbox/1789967986-ajAf6V.note but firstmate was NOT woken
+[exit 3]
+$ fm-inbox.sh note --request-id web-req-2 --json fix the flaky test
+/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3160NPCGZS4B894JST8VVTQ/bin/fm-wake-lib.sh: line 1844: /tmp/fm-console-live.vRrqgU/state/.wake-queue: Permission denied
+{"schema":"fm-inbox-note.v1","outcome":"replay","id":"1789967986-ajAf6V","request_id":"web-req-2","saved":true,"announced":false,"acknowledged":false,"path":"/tmp/fm-console-live.vRrqgU/state/inbox/1789967986-ajAf6V.note"}
+fm-inbox: note 1789967986-ajAf6V is saved at /tmp/fm-console-live.vRrqgU/state/inbox/1789967986-ajAf6V.note but firstmate was NOT woken
+[exit 3]
+wake rows: 1  notes pending: 2  handled: 0
+$ fm-inbox.sh announce --json 1789967986-ajAf6V
+{"schema":"fm-inbox-note.v1","outcome":"created","id":"1789967986-ajAf6V","request_id":null,"saved":true,"announced":true,"acknowledged":false,"path":"/tmp/fm-console-live.vRrqgU/state/inbox/1789967986-ajAf6V.note"}
+[exit 0]
+$ fm-inbox.sh announce --json 1789967986-ajAf6V
+{"schema":"fm-inbox-note.v1","outcome":"replay","id":"1789967986-ajAf6V","request_id":null,"saved":true,"announced":true,"acknowledged":false,"path":"/tmp/fm-console-live.vRrqgU/state/inbox/1789967986-ajAf6V.note"}
+[exit 0]
+$ fm-inbox.sh note --request-id web-req-2 --json fix the flaky test
+{"schema":"fm-inbox-note.v1","outcome":"replay","id":"1789967986-ajAf6V","request_id":"web-req-2","saved":true,"announced":true,"acknowledged":false,"path":"/tmp/fm-console-live.vRrqgU/state/inbox/1789967986-ajAf6V.note"}
+[exit 0]
+wake rows: 2  notes pending: 2  handled: 0
+
+== S3 acked note gets no repair wake ==
+$ fm-inbox.sh note --request-id web-req-3 --json acked before repair
+/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3160NPCGZS4B894JST8VVTQ/bin/fm-wake-lib.sh: line 1844: /tmp/fm-console-live.vRrqgU/state/.wake-queue: Permission denied
+{"schema":"fm-inbox-note.v1","outcome":"created","id":"1789967986-ur6mAH","request_id":"web-req-3","saved":true,"announced":false,"acknowledged":false,"path":"/tmp/fm-console-live.vRrqgU/state/inbox/1789967986-ur6mAH.note"}
+fm-inbox: note 1789967986-ur6mAH is saved at /tmp/fm-console-live.vRrqgU/state/inbox/1789967986-ur6mAH.note but firstmate was NOT woken
+[exit 3]
+$ fm-inbox.sh drain --ack 1789967986-ur6mAH
+acked 1789967986-ur6mAH
+[exit 0]
+$ fm-inbox.sh announce --json 1789967986-ur6mAH
+{"schema":"fm-inbox-note.v1","outcome":"replay","id":"1789967986-ur6mAH","request_id":null,"saved":true,"announced":false,"acknowledged":true,"path":"/tmp/fm-console-live.vRrqgU/state/inbox/handled/1789967986-ur6mAH.note"}
+[exit 0]
+$ fm-inbox.sh note --request-id web-req-3 --json acked before repair
+{"schema":"fm-inbox-note.v1","outcome":"replay","id":"1789967986-ur6mAH","request_id":"web-req-3","saved":true,"announced":false,"acknowledged":true,"path":"/tmp/fm-console-live.vRrqgU/state/inbox/handled/1789967986-ur6mAH.note"}
+[exit 0]
+wake rows: 2  notes pending: 2  handled: 1
+
+== S4 primary replies; receipts cursor ==
+$ fm-inbox.sh drain --ack 1789967985-krv5Ab
+acked 1789967985-krv5Ab
+[exit 0]
+$ fm-inbox.sh reply --json 1789967985-krv5Ab Console deploy started; PR to follow.
+{"schema":"fm-inbox-reply.v1","outcome":"created","id":"1789967985-krv5Ab","path":"/tmp/fm-console-live.vRrqgU/state/inbox/.replies/1789967985-krv5Ab"}
+[exit 0]
+$ fm-inbox.sh reply --json 1789967985-krv5Ab second answer
+fm-inbox: reply already recorded for 1789967985-krv5Ab
+[exit 1]
+[receipts exit 0]
+Expecting value: line 1 column 1 (char 0)
+cursor=
+$ fm-inbox.sh reply --json 1789967986-ajAf6V Flaky test fixed.
+{"schema":"fm-inbox-reply.v1","outcome":"created","id":"1789967986-ajAf6V","path":"/tmp/fm-console-live.vRrqgU/state/inbox/.replies/1789967986-ajAf6V"}
+[exit 0]
+$ fm-inbox.sh receipts --after <cursor>
+{
+    "schema": "fm-inbox-receipts.v1",
+    "home": "tmp/fm-console-live.vRrqgU",
+    "generated": "2026-09-21T05:19:47Z",
+    "pending": [
+        {
+            "id": "1789967986-ajAf6V",
+            "at": "2026-09-21T05:19:46Z",
+            "source": "text",
+            "request_id": "web-req-2",
+            "body": "fix the flaky test",
+            "acknowledged": false,
+            "announced": true,
+            "reply": {
+                "id": "1789967986-ajAf6V",
+                "at": "2026-09-21T05:19:47Z",
+                "body": "Flaky test fixed.",
+                "cursor": "000000000002"
+            }
+        }
+    ],
+    "handled": [
+        {
+            "id": "1789967986-ur6mAH",
+            "at": "2026-09-21T05:19:46Z",
+            "source": "text",
+            "request_id": "web-req-3",
+            "body": "acked before repair",
+            "acknowledged": true,
+            "announced": false,
+            "reply": null
+        },
+        {
+            "id": "1789967985-krv5Ab",
+            "at": "2026-09-21T05:19:45Z",
+            "source": "text",
+            "request_id": "web-req-1",
+            "body": "deploy the console\nsecond line",
+            "acknowledged": true,
+            "announced": true,
+            "reply": {
+                "id": "1789967985-krv5Ab",
+                "at": "2026-09-21T05:19:46Z",
+                "body": "Console deploy started; PR to follow.",
+                "cursor": "000000000001"
+            }
+        }
+    ],
+    "replies": [
+        {
+            "id": "1789967985-krv5Ab",
+            "at": "2026-09-21T05:19:46Z",
+            "body": "Console deploy started; PR to follow.",
+            "cursor": "000000000001"
+        },
+        {
+            "id": "1789967986-ajAf6V",
+            "at": "2026-09-21T05:19:47Z",
+            "body": "Flaky test fixed.",
+            "cursor": "000000000002"
+        }
+    ],
+    "reply_cursor": "000000000002",
+    "omitted": []
+}
+
+== S5 bounded receipts with omission disclosure ==
+pending shown: 20 omitted: [{"surface": "pending notes omitted by bound: 6", "reveal": "pass --all-pending"}]
+--all-pending shown: 26 omitted: []
+
+== S6 readiness projection ==
+$ fm-inbox.sh ready
+{"schema":"fm-primary-ready.v1","home":"tmp/fm-console-live.vRrqgU","observed_at":"2026-09-21T05:19:51Z","lock":{"state":"free","pid":null,"live_harness":false},"wake_consumer":{"state":"unknown","reason":"supervision-model-unknown-for-home","beacon_age_seconds":null},"posture":{"state":"present"},"can_receive":false}
+[exit 0]
+$ fm-inbox.sh ready
+{"schema":"fm-primary-ready.v1","home":"tmp/fm-console-live.vRrqgU","observed_at":"2026-09-21T05:19:51Z","lock":{"state":"unknown","pid":2810722,"live_harness":false},"wake_consumer":{"state":"unknown","reason":"supervision-model-unknown-for-home","beacon_age_seconds":0},"posture":{"state":"present"},"can_receive":"unknown"}
+[exit 0]
+$ fm-inbox.sh ready
+{"schema":"fm-primary-ready.v1","home":"tmp/fm-console-live.vRrqgU","observed_at":"2026-09-21T05:19:51Z","lock":{"state":"stale","pid":999999,"live_harness":false},"wake_consumer":{"state":"unknown","reason":"supervision-model-unknown-for-home","beacon_age_seconds":0},"posture":{"state":"present"},"can_receive":false}
+[exit 0]
+$ fm-lock.sh status
+lock: stale (pid 999999 dead or not a harness)
+[exit 0]
+
+== S7 adversarial: bad ids, empty body, body that looks like flags ==
+$ fm-inbox.sh note --request-id ../escape --json x
+fm-inbox: invalid request id (use 1-128 characters: A-Za-z0-9._:-)
+[exit 1]
+$ fm-inbox.sh note --request-id ok-1 --json 
+fm-inbox: refusing to queue an empty note
+[exit 1]
+$ fm-inbox.sh note --request-id dash-1 --json -- --all-pending
+{"schema":"fm-inbox-note.v1","outcome":"created","id":"1789967991-Mzi8T3","request_id":"dash-1","saved":true,"announced":true,"acknowledged":false,"path":"/tmp/fm-console-live.vRrqgU/state/inbox/1789967991-Mzi8T3.note"}
+[exit 0]
+$ fm-inbox.sh announce --json no-such-note
+fm-inbox: no such note: no-such-note
+[exit 1]
+$ fm-inbox.sh reply --json no-such-note x
+fm-inbox: no such note: no-such-note
+[exit 1]
+
+== S8 plain human note path unchanged ==
+$ fm-inbox.sh note plain human note
+queued 1789967991-jCDQHL
+  plain human note
+  firstmate will pick this up at its next check.
+[exit 0]
+1789967991-jCDQHL
+    plain human note
+[exit 0]

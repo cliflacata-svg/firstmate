@@ -1,0 +1,33 @@
+== reply cursor: client reads only what is new ==
+client cursor after first poll: 000000000002
+$ fm-inbox.sh receipts --after 000000000002  (replies[] only)
+{
+ "replies": [
+  {
+   "id": "1789968011-DnU48F",
+   "at": "2026-09-21T05:20:11Z",
+   "body": "answer C",
+   "cursor": "000000000003"
+  }
+ ],
+ "reply_cursor": "000000000003"
+}
+--- simulate lost .seq counter, then a new reply
+after 3 -> [('1789968011-mDepnQ', 'answer D', '000000000004')]
+
+== ready: live harness holder + fresh beacon, then away ==
+$ fm-inbox.sh ready
+{"schema":"fm-primary-ready.v1","home":"tmp/fm-console-live2.IwzYM1","observed_at":"2026-09-21T05:20:12Z","lock":{"state":"held","pid":2815479,"live_harness":true},"wake_consumer":{"state":"healthy","reason":"supervised","beacon_age_seconds":0},"posture":{"state":"present"},"can_receive":true}
+
+$ fm-lock.sh status
+lock: held by live harness pid 2815479
+$ fm-inbox.sh ready  (after .afk=away)
+{"schema":"fm-primary-ready.v1","home":"tmp/fm-console-live2.IwzYM1","observed_at":"2026-09-21T05:20:12Z","lock":{"state":"held","pid":2815479,"live_harness":true},"wake_consumer":{"state":"healthy","reason":"supervised","beacon_age_seconds":0},"posture":{"state":"away"},"can_receive":true}
+
+$ fm-inbox.sh ready  (beacon 2h old)
+{"schema":"fm-primary-ready.v1","home":"tmp/fm-console-live2.IwzYM1","observed_at":"2026-09-21T05:20:12Z","lock":{"state":"held","pid":2815479,"live_harness":true},"wake_consumer":{"state":"down","reason":"stale-beacon","beacon_age_seconds":7200},"posture":{"state":"away"},"can_receive":false}
+
+$ fm-inbox.sh ready  (holder exited)
+{"schema":"fm-primary-ready.v1","home":"tmp/fm-console-live2.IwzYM1","observed_at":"2026-09-21T05:20:12Z","lock":{"state":"stale","pid":2815479,"live_harness":false},"wake_consumer":{"state":"unknown","reason":"supervision-model-unknown-for-home","beacon_age_seconds":7200},"posture":{"state":"away"},"can_receive":false}
+
+lock file untouched by ready: 2815479
