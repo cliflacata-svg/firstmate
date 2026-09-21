@@ -370,7 +370,7 @@ bad="1700000000-badseq"
 printf 'id=%s\nat=2026-01-01T00:00:00Z\nsource=text\nannounce_marker=1\n--\norder\n' \
   "$bad" > "$home/state/inbox/$bad.note"
 printf 'id=%s\nat=2026-01-01T00:00:00Z\n--\nno sequence here\n' \
-  > "$home/state/inbox/.replies/$bad"
+  "$bad" >"$home/state/inbox/.replies/$bad"
 malformed=$(run_inbox "$home" receipts) || fail "receipts with a malformed reply should succeed"
 assert_equals "0" "$(printf '%s' "$malformed" | json_len replies)" \
   "a reply without a sequence is not placed in the reply stream"
