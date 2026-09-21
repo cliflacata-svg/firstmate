@@ -1,0 +1,55 @@
+### S1: ask small question (fake codex/grok/claude on PATH record any invocation)
+$ fm-console-quickask.sh ask --question "Which task is blocked?" --excerpt "task-12 blocked on review"
+status=refused
+reason=runner-unenforced
+question_tokens=8
+excerpt_tokens=9
+assembled_tokens=79
+max_input_tokens=2000
+max_excerpt_tokens=800
+max_output_tokens=512
+usage=none
+runner=none
+model=none
+error: Quick ask is unavailable: no installed subscription runner can enforce the bounded contract.
+codex-cli 0.154.0 gpt-5.6-luna: isolated one-word exec used 6147 input tokens (cap 2000); no max-output switch exists; debug prompt-input still injects skills and project instructions; Luna base_instructions are 17730 characters.
+grok 1.0.40: isolated --verbatim --no-memory --no-subagents --system-prompt-override one-word probe used 12957 input tokens, advertised tool definitions, and inherited user skills; --no-memory is accepted but absent from --help; no proven 512-output cap.
+A timeout or --max-turns flag is not a token cap. Display truncation is not a generation cap. Refusing rather than invoking a full agent.
+See docs/verification/console-quickask.md
+exit=1
+provider invocations logged: 0
+
+### S2: excerpt over 800 tokens (3000 bytes)
+status=refused
+reason=excerpt-over-budget
+question_tokens=1
+excerpt_tokens=1000
+assembled_tokens=1063
+max_input_tokens=2000
+max_excerpt_tokens=800
+max_output_tokens=512
+usage=none
+runner=none
+model=none
+error: memory excerpt is 1000 estimated tokens; cap is 800. Refusing rather than sending a growing transcript.
+exit=1
+
+### S3: excerpt within 800 but question makes assembled prompt > 2000 tokens
+status=refused
+reason=assembled-over-budget
+question_tokens=1667
+excerpt_tokens=667
+assembled_tokens=2396
+max_input_tokens=2000
+max_excerpt_tokens=800
+max_output_tokens=512
+usage=none
+runner=none
+model=none
+error: locally assembled prompt is 2396 estimated tokens before any runner overhead; cap is 2000. Refusing rather than growing the request.
+exit=1
+provider invocations logged after S1-S3: 0
+
+### S3b: excerpt-file that is a symlink is refused
+error: excerpt file must be an ordinary non-symlink file
+exit=2

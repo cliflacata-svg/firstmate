@@ -1,0 +1,173 @@
+### S4: real Codex GPT-5.6 Luna capture
+$ fm-console-quickask.sh inspect-events --kind codex codex-luna-pong.jsonl
+status=violates
+kind=codex
+input_tokens=6147
+output_tokens=6
+reasoning_tokens=0
+turns=1
+model_calls=0
+completions=1
+tool_definitions=unobserved
+tool_executions=0
+violations=input_tokens,requests_unobservable,tool_definitions_unobservable
+max_input_tokens=2000
+max_output_tokens=512
+exit=1
+
+### S5: real Grok verbatim capture
+$ fm-console-quickask.sh inspect-events --kind grok grok-verbatim-pong.jsonl
+status=violates
+kind=grok
+input_tokens=13085
+output_tokens=33
+reasoning_tokens=31
+turns=1
+model_calls=1
+completions=1
+tool_definitions=14
+tool_executions=0
+violations=input_tokens,tool_definitions
+max_input_tokens=2000
+max_output_tokens=512
+exit=1
+
+### S6: synthetic fully-bounded capture (the only honours path)
+$ fm-console-quickask.sh inspect-events --kind grok synthetic-honours.jsonl
+status=honours
+kind=grok
+input_tokens=400
+output_tokens=20
+reasoning_tokens=0
+turns=1
+model_calls=1
+completions=1
+tool_definitions=0
+tool_executions=0
+violations=none
+max_input_tokens=2000
+max_output_tokens=512
+exit=0
+
+### S7 adversarial: truncated Grok capture, usage but no end record
+$ fm-console-quickask.sh inspect-events --kind grok synthetic-truncated.jsonl
+status=violates
+kind=grok
+input_tokens=400
+output_tokens=20
+reasoning_tokens=0
+turns=0
+model_calls=0
+completions=0
+tool_definitions=0
+tool_executions=0
+violations=requests_unobservable
+max_input_tokens=2000
+max_output_tokens=512
+exit=1
+
+### S8 adversarial: 400 input + 5000 cache_creation
+$ fm-console-quickask.sh inspect-events --kind grok cachecreate.jsonl
+status=violates
+kind=grok
+input_tokens=5400
+output_tokens=20
+reasoning_tokens=0
+turns=1
+model_calls=1
+completions=1
+tool_definitions=0
+tool_executions=0
+violations=input_tokens
+max_input_tokens=2000
+max_output_tokens=512
+exit=1
+
+### S9 adversarial: two model calls
+$ fm-console-quickask.sh inspect-events --kind grok twocalls.jsonl
+status=violates
+kind=grok
+input_tokens=400
+output_tokens=20
+reasoning_tokens=0
+turns=2
+model_calls=2
+completions=1
+tool_definitions=0
+tool_executions=0
+violations=multiple_requests
+max_input_tokens=2000
+max_output_tokens=512
+exit=1
+
+### S10 adversarial: hidden reasoning 600 pushes output over 512
+$ fm-console-quickask.sh inspect-events --kind grok reasoning.jsonl
+status=violates
+kind=grok
+input_tokens=400
+output_tokens=20
+reasoning_tokens=600
+turns=1
+model_calls=1
+completions=1
+tool_definitions=0
+tool_executions=0
+violations=output_tokens
+max_input_tokens=2000
+max_output_tokens=512
+exit=1
+
+### S11 adversarial: tool execution event
+$ fm-console-quickask.sh inspect-events --kind grok toolexec.jsonl
+status=violates
+kind=grok
+input_tokens=400
+output_tokens=20
+reasoning_tokens=0
+turns=1
+model_calls=1
+completions=1
+tool_definitions=0
+tool_executions=1
+violations=tool_execution
+max_input_tokens=2000
+max_output_tokens=512
+exit=1
+
+### S12 adversarial: tiny Codex capture (no tool list observable)
+$ fm-console-quickask.sh inspect-events --kind codex codexsmall.jsonl
+status=violates
+kind=codex
+input_tokens=300
+output_tokens=5
+reasoning_tokens=0
+turns=1
+model_calls=0
+completions=1
+tool_definitions=unobserved
+tool_executions=0
+violations=requests_unobservable,tool_definitions_unobservable
+max_input_tokens=2000
+max_output_tokens=512
+exit=1
+
+### S13 adversarial: end record with no usage
+$ fm-console-quickask.sh inspect-events --kind grok nousage.jsonl
+status=violates
+kind=grok
+input_tokens=0
+output_tokens=0
+reasoning_tokens=0
+turns=1
+model_calls=1
+completions=1
+tool_definitions=0
+tool_executions=0
+violations=usage_unreported
+max_input_tokens=2000
+max_output_tokens=512
+exit=1
+
+### S14: bad kind
+error: inspect-events --kind must be codex or grok
+exit=2 (re-checked without pipe; 141 was head SIGPIPE)

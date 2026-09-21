@@ -1,0 +1,21 @@
+ok - help prints the ask and inspect-events contracts
+ok - missing command is a usage error
+ok - ask without --question is a usage error
+ok - ask rejects both --excerpt and --excerpt-file
+ok - small question refuses as runner-unenforced without invoking a CLI
+ok - an 801-token excerpt is refused as excerpt-over-budget
+ok - --excerpt-file of a growing transcript is refused as excerpt-over-budget
+ok - missing excerpt file is a usage error
+ok - symlink excerpt file is refused
+ok - assembled prompt over 2000 estimated tokens is refused
+ok - runner-unenforced, excerpt-over-budget, and assembled-over-budget are distinguishable
+ok - recorded Luna JSONL is reported as input-over-budget
+ok - a Codex capture under the token caps never reports honours
+ok - Codex cache-write input counts toward the input cap
+ok - recorded Grok JSONL is reported as input-over-budget with tool definitions
+ok - inspect-events can return honours on a record under the caps
+ok - Grok cache-creation input counts toward the input cap
+ok - a Grok record with no tools list never reports honours
+ok - a Grok capture with usage but no end record never reports honours
+ok - a Grok capture with two completed requests never reports honours
+ok - inspect-events refuses a symlink events file
