@@ -101,3 +101,4 @@ Claude was not probed: the VPS host facts said it is unauthenticated there, and 
 
 Until a later capture shows a supported runner under every clause of the bound, `fm-console-quickask.sh ask` must refuse rather than invoke a model.
 `fm-console-quickask.sh inspect-events` is the command that re-evaluates a recorded JSONL against the same caps.
+It fails closed: a clause the events cannot show is a violation (`requests_unobservable`, `tool_definitions_unobservable`), so a Codex JSONL, which lists neither tool definitions nor a model-call count, cannot report `honours`.
