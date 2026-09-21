@@ -207,6 +207,35 @@ assert_contains "$repaired" "announced $unannounced_id" "the repair reports the 
 assert_equals "1" "$(count_wakes "$home")" "repairing appends exactly one wake"
 pass "saved-but-unannounced notes are repairable without creating a second note"
 
+# A note firstmate already acknowledged needs no wake, so neither the repair
+# path nor a request-id replay appends one.
+home=$(make_home announce-acked)
+set +e
+acked=$(FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" \
+  "$isolated/bin/fm-inbox.sh" note --request-id acked-1 --json "drained before repair" 2>/dev/null)
+set -e
+acked_id=$(printf '%s' "$acked" | json_get id)
+run_inbox "$home" drain --ack "$acked_id" >/dev/null || fail "drain --ack failed"
+acked_repair=$(run_inbox "$home" announce --json "$acked_id") \
+  || fail "announce of an acknowledged note should succeed without waking"
+assert_equals "True" "$(printf '%s' "$acked_repair" | json_get acknowledged)" \
+  "announce reports the note as already acknowledged"
+assert_equals "False" "$(printf '%s' "$acked_repair" | json_get announced)" \
+  "announce does not claim a wake it never appended"
+acked_human=$(run_inbox "$home" announce "$acked_id") \
+  || fail "human announce of an acknowledged note should succeed"
+assert_contains "$acked_human" "already-acknowledged $acked_id" \
+  "human announce names the acknowledgement"
+acked_replay=$(run_inbox "$home" note --request-id acked-1 --json "drained before repair") \
+  || fail "replay of an acknowledged note should exit 0"
+assert_equals "replay" "$(printf '%s' "$acked_replay" | json_get outcome)" \
+  "retry of an acknowledged note is a replay"
+assert_equals "True" "$(printf '%s' "$acked_replay" | json_get acknowledged)" \
+  "replay reports the note as already acknowledged"
+assert_equals "0" "$(count_wakes "$home")" \
+  "an acknowledged note never gets a repair wake"
+pass "repair and replay do not wake firstmate for an already-acknowledged note"
+
 # --- bounded receipts JSON, omission disclosure, reply cursor ---------------
 
 json_len() {  # <key>
@@ -317,6 +346,47 @@ set -e
 expect_code 1 "$conflict_code" "a second reply for the same note is refused"
 assert_contains "$conflict" "already recorded" "the refusal names the existing record"
 pass "the reply channel is durable and its cursor is a strict order"
+
+# A lost sequence counter must not move the cursor backwards: the next reply
+# still sorts after every reply a client has already read.
+lost_cursor=$(printf '%s' "$replies" | python3 -c 'import json,sys
+print(json.load(sys.stdin)["reply_cursor"])')
+rm -f "$home/state/inbox/.replies/.seq"
+third="1700000000-mmmmmm"
+printf 'id=%s\nat=2026-01-01T00:00:00Z\nsource=text\nannounce_marker=1\n--\norder three\n' \
+  "$third" > "$home/state/inbox/$third.note"
+run_inbox "$home" reply "$third" "answer three" >/dev/null || fail "third reply failed"
+after_lost=$(run_inbox "$home" receipts --after "$lost_cursor") \
+  || fail "receipts after a lost counter should succeed"
+assert_equals "$third" "$(printf '%s' "$after_lost" | json_get replies 0 id)" \
+  "a reply recorded after the counter was lost is still after the client cursor"
+pass "the reply cursor never goes backwards when the sequence counter is lost"
+
+# A reply without a valid sequence is malformed: it gets no invented position
+# and receipts say so instead of silently ordering it.
+home=$(make_home malformed-reply)
+mkdir -p "$home/state/inbox/.replies"
+bad="1700000000-badseq"
+printf 'id=%s\nat=2026-01-01T00:00:00Z\nsource=text\nannounce_marker=1\n--\norder\n' \
+  "$bad" > "$home/state/inbox/$bad.note"
+printf 'id=%s\nat=2026-01-01T00:00:00Z\n--\nno sequence here\n' \
+  > "$home/state/inbox/.replies/$bad"
+malformed=$(run_inbox "$home" receipts) || fail "receipts with a malformed reply should succeed"
+assert_equals "0" "$(printf '%s' "$malformed" | json_len replies)" \
+  "a reply without a sequence is not placed in the reply stream"
+assert_contains "$malformed" "malformed replies without a valid sequence: 1 ($bad)" \
+  "receipts name the malformed reply"
+pass "a reply without a valid sequence is reported as malformed"
+
+# One undecodable note must not fail the whole receipts view.
+home=$(make_home non-utf8)
+run_inbox "$home" note "readable note" >/dev/null || fail "seed note failed"
+printf 'id=1700000000-binary\nat=2026-01-01T00:00:00Z\nsource=text\n--\n\377\376 bytes\n' \
+  > "$home/state/inbox/1700000000-binary.note"
+binary=$(run_inbox "$home" receipts) || fail "receipts must survive a non-UTF-8 note"
+assert_equals "2" "$(printf '%s' "$binary" | json_len pending)" \
+  "the undecodable note and the readable note are both listed"
+pass "a non-UTF-8 note does not break the receipts view"
 
 # --- readiness projection, including unknown -------------------------------
 

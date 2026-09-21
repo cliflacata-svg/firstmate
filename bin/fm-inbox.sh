@@ -39,6 +39,8 @@
 # crash between save and wake still replays the original note. Without
 # --request-id the historical one-note-per-call behaviour is unchanged.
 # `announce` repairs the wake for an already-saved note without creating another.
+# A note already acknowledged (in handled/) gets no wake from `announce` or a
+# request-id replay; both report it as acknowledged and exit 0.
 # It refuses a note whose announcement state is UNKNOWN: a note written before
 # this home tracked announcement markers already appended its own wake at
 # creation, and there is no record to prove it, so announcing it again would be
@@ -300,11 +302,11 @@ write_note_file() {  # <path> <id> <source> <body> [extra] [request-id]
   } >"$path"
 }
 
-emit_note_json() {  # <outcome> <id> <request-id> <saved> <announced> <path>
+emit_note_json() {  # <outcome> <id> <request-id> <saved> <announced> <path> [acknowledged]
   need_python
-  python3 - "$1" "$2" "$3" "$4" "$5" "$6" <<'PY'
+  python3 - "$1" "$2" "$3" "$4" "$5" "$6" "${7:-0}" <<'PY'
 import json, sys
-outcome, note_id, request_id, saved, announced, path = sys.argv[1:7]
+outcome, note_id, request_id, saved, announced, path, acknowledged = sys.argv[1:8]
 json.dump({
     "schema": "fm-inbox-note.v1",
     "outcome": outcome,
@@ -312,6 +314,7 @@ json.dump({
     "request_id": request_id or None,
     "saved": saved == "1",
     "announced": True if announced == "1" else False if announced == "0" else None,
+    "acknowledged": acknowledged == "1",
     "path": path,
 }, sys.stdout, separators=(",", ":"))
 sys.stdout.write("\n")
@@ -327,11 +330,15 @@ PY
 # the second replays the reservation while the first is still inside the
 # append - and without that exclusion both would read "not announced" and one
 # note would produce two wake rows.
+#
+# Returns 2 without waking when the note is no longer pending: firstmate has
+# already acknowledged it, so a wake would only spend a turn on an empty inbox.
 announce_note() {  # <id> <summary>
   local id=$1 summary=$2 lib="$FM_ROOT/bin/fm-wake-lib.sh" status=0
   if note_announced "$id"; then
     return 0
   fi
+  [ -f "$INBOX/$id.note" ] || return 2
   if [ ! -r "$lib" ]; then
     printf 'fm-inbox: note saved but NOT announced (missing %s)\n' "$lib" >&2
     return 1
@@ -341,6 +348,10 @@ announce_note() {  # <id> <summary>
   if note_announced "$id"; then
     fm_lock_release "$FM_WAKE_QUEUE_LOCK"
     return 0
+  fi
+  if [ ! -f "$INBOX/$id.note" ]; then
+    fm_lock_release "$FM_WAKE_QUEUE_LOCK"
+    return 2
   fi
   if fm_wake_append_locked check "inbox:$id" "check: captain inbox note $id - $summary"; then
     mark_announced "$id"
@@ -353,13 +364,15 @@ announce_note() {  # <id> <summary>
 
 finish_note_result() {  # <outcome> <id> <request-id> <json> <strict-exit> <summary>
   local outcome=$1 id=$2 request_id=$3 json=$4 strict=$5 summary=$6
-  local announced=0 path="$INBOX/$id.note"
+  local announced=0 acknowledged=0 path="$INBOX/$id.note" rc=0
+  announce_note "$id" "$summary" || rc=$?
+  case "$rc" in
+    0) announced=1 ;;
+    2) acknowledged=1 ;;
+  esac
   [ -f "$INBOX/handled/$id.note" ] && path="$INBOX/handled/$id.note"
-  if announce_note "$id" "$summary"; then
-    announced=1
-  fi
   if [ "$json" -eq 1 ]; then
-    emit_note_json "$outcome" "$id" "$request_id" 1 "$announced" "$path"
+    emit_note_json "$outcome" "$id" "$request_id" 1 "$announced" "$path" "$acknowledged"
   else
     if [ "$outcome" = replay ]; then
       printf 'replay %s\n' "$id"
@@ -369,9 +382,11 @@ finish_note_result() {  # <outcome> <id> <request-id> <json> <strict-exit> <summ
     printf '  %s\n' "$summary"
     if [ "$announced" -eq 1 ]; then
       printf '  firstmate will pick this up at its next check.\n'
+    elif [ "$acknowledged" -eq 1 ]; then
+      printf '  firstmate has already acknowledged this note.\n'
     fi
   fi
-  if [ "$announced" -eq 1 ]; then
+  if [ "$announced" -eq 1 ] || [ "$acknowledged" -eq 1 ]; then
     return 0
   fi
   if [ "$strict" -eq 1 ]; then
@@ -484,7 +499,7 @@ cmd_note() {
 }
 
 cmd_announce() {
-  local json=0 id summary path
+  local json=0 id summary path state rc=0
   if [ "${1:-}" = "--json" ]; then
     json=1
     shift
@@ -494,7 +509,11 @@ cmd_announce() {
   valid_note_id "$id" || die "invalid note id"
   path=$(note_path "$id") || die "no such note: $id"
   summary=$(note_summary_from_body "$(read_note_body "$path")")
-  case "$(note_announce_state "$id" "$path")" in
+  state=$(note_announce_state "$id" "$path")
+  if [ "$state" != true ] && [ "$path" = "$INBOX/handled/$id.note" ]; then
+    state=acknowledged
+  fi
+  case "$state" in
     true)
       if [ "$json" -eq 1 ]; then
         emit_note_json replay "$id" "" 1 1 "$path"
@@ -512,11 +531,21 @@ cmd_announce() {
       exit 1
       ;;
   esac
-  if announce_note "$id" "$summary"; then
+  announce_note "$id" "$summary" || rc=$?
+  if [ "$rc" -eq 0 ]; then
     if [ "$json" -eq 1 ]; then
       emit_note_json created "$id" "" 1 1 "$path"
     else
       printf 'announced %s\n' "$id"
+    fi
+    return 0
+  fi
+  if [ "$rc" -eq 2 ] || [ "$state" = acknowledged ]; then
+    path=$(note_path "$id") || path="$INBOX/handled/$id.note"
+    if [ "$json" -eq 1 ]; then
+      emit_note_json replay "$id" "" 1 0 "$path" 1
+    else
+      printf 'already-acknowledged %s\n' "$id"
     fi
     return 0
   fi
@@ -532,14 +561,29 @@ cmd_announce() {
 # Claim the next reply sequence. The caller holds REPLY_SEQ_LOCK across the
 # claim AND the record write, so a reply a reader can see implies every lower
 # sequence is already readable: the cursor stays a strict total order.
+# The claim is above both the counter and every recorded reply, and the counter
+# is replaced by rename, so a torn or lost counter can never move it backwards.
 next_reply_seq() {
-  local seq_file="$REPLIES/.seq" seq
+  local seq_file="$REPLIES/.seq" seq recorded tmp
   seq=$(cat "$seq_file" 2>/dev/null || printf '0')
   case "$seq" in
     ''|*[!0-9]*) seq=0 ;;
   esac
+  recorded=$(find "$REPLIES" -maxdepth 1 -type f ! -name '.*' -exec awk '
+    FNR == 1 { head = 1 }
+    /^--$/ { head = 0 }
+    head && /^seq=[0-9]+$/ { v = substr($0, 5) + 0; if (v > max) max = v }
+    END { print max + 0 }' {} + 2>/dev/null | sort -n | tail -n 1)
+  case "$recorded" in
+    ''|*[!0-9]*) recorded=0 ;;
+  esac
+  [ "$recorded" -le "$seq" ] || seq=$recorded
   seq=$((seq + 1))
-  printf '%s\n' "$seq" >"$seq_file" || return 1
+  tmp=$(mktemp "$REPLIES/.seq-XXXXXX") || return 1
+  if ! printf '%s\n' "$seq" >"$tmp" || ! mv "$tmp" "$seq_file"; then
+    rm -f "$tmp"
+    return 1
+  fi
   printf '%s\n' "$seq"
 }
 
@@ -642,8 +686,14 @@ all_replies = sys.argv[10] == "1"
 after = sys.argv[11]
 generated = sys.argv[12]
 
+# A record that vanishes between listing and reading - drain --ack moving a
+# note to handled/ - is skipped, and undecodable bytes are replaced, so one bad
+# or moving file never fails the whole view.
 def parse_record(path):
-    text = Path(path).read_text(encoding="utf-8")
+    try:
+        text = Path(path).read_bytes().decode("utf-8", errors="replace")
+    except FileNotFoundError:
+        return None
     headers, sep, body = text.partition("\n--\n")
     if not sep:
         headers, sep, body = text.partition("\n--")
@@ -668,7 +718,10 @@ def list_notes(folder):
     for path in sorted(folder.glob("*.note"), key=lambda p: p.name, reverse=True):
         if path.name.startswith("."):
             continue
-        meta, body = parse_record(path)
+        record = parse_record(path)
+        if record is None:
+            continue
+        meta, body = record
         note_id = meta.get("id") or path.name[:-5]
         notes.append({
             "id": note_id,
@@ -681,25 +734,28 @@ def list_notes(folder):
         })
     return notes
 
-# The cursor is the reply sequence first, so it is a strict total order in
-# creation order. `at` and the note id only break ties among replies recorded
-# before the sequence existed, which all carry sequence 0.
-def reply_cursor_of(seq, at, note_id):
-    return "%012d|%s|%s" % (seq, at or "", note_id or "")
+# The cursor is the reply sequence, a strict total order in creation order.
+# Every reply is recorded with one, so a reply without a valid sequence is
+# malformed: it is reported in omitted[] rather than given a made-up position.
+malformed_replies = []
 
 def reply_record(note_id):
     path = Path(replies_dir) / note_id
     if not path.is_file():
         return None
-    meta, body = parse_record(path)
-    raw_seq = meta.get("seq") or "0"
-    seq = int(raw_seq) if raw_seq.isdigit() else 0
-    at = meta.get("at")
+    record = parse_record(path)
+    if record is None:
+        return None
+    meta, body = record
+    raw_seq = meta.get("seq") or ""
+    if not (raw_seq.isascii() and raw_seq.isdigit()):
+        malformed_replies.append(note_id)
+        return None
     return {
         "id": note_id,
-        "at": at,
+        "at": meta.get("at"),
         "body": body,
-        "cursor": reply_cursor_of(seq, at, note_id),
+        "cursor": "%012d" % int(raw_seq),
     }
 
 # announced is null - not false - for a note written before this home tracked
@@ -720,8 +776,13 @@ def enrich(note, acknowledged):
     rec.pop("announce_marker", None)
     return rec
 
-pending_all = [enrich(n, False) for n in list_notes(inbox)]
-handled_all = [enrich(n, True) for n in list_notes(Path(inbox) / "handled")]
+# Pending is listed before handled so a note acked mid-listing still appears
+# in handled; one that was seen in both is reported once, as handled.
+pending_notes = list_notes(inbox)
+handled_notes = list_notes(Path(inbox) / "handled")
+handled_ids = {n["id"] for n in handled_notes}
+pending_all = [enrich(n, False) for n in pending_notes if n["id"] not in handled_ids]
+handled_all = [enrich(n, True) for n in handled_notes]
 
 def bound_list(rows, limit, unlimited):
     if unlimited or limit <= 0 or len(rows) <= limit:
@@ -759,6 +820,12 @@ if replies_omitted:
     omitted.append({
         "surface": "replies omitted by bound: %d" % replies_omitted,
         "reveal": "pass --all-replies",
+    })
+if malformed_replies:
+    omitted.append({
+        "surface": "malformed replies without a valid sequence: %d (%s)"
+            % (len(malformed_replies), ", ".join(sorted(malformed_replies))),
+        "reveal": "inspect %s" % replies_dir,
     })
 
 home_label = "/".join(Path(home).parts[-2:]) if home else home
