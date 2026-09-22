@@ -58,6 +58,11 @@
 # acknowledgement, announcement, and any recorded reply. Default bounds omit
 # rather than implying the first page is everything; omitted[] names the
 # surface and how to reveal it, the same convention as fm-bearings-snapshot.sh.
+# Pages are served from a private SQLite projection (state/.inbox-receipts.sqlite3,
+# owned by bin/fm-inbox-receipts.py) that each note, reply, announcement and ack
+# refreshes for its one record after the first import, so a page's cost does not
+# grow with history. The files stay authoritative; `--rebuild` re-imports them
+# after an edit made outside this script.
 # `reply` is how the primary publishes its actual answer against a note id.
 # Each reply is stamped with a durable per-home sequence, so the receipts cursor
 # is a strict total order and two replies recorded in the same second are both
