@@ -51,7 +51,6 @@ WORD = re.compile(r"[A-Za-z0-9][A-Za-z0-9'-]{3,39}")
 
 MEMORY_MAX_CANDIDATE_FILES = 40
 MEMORY_FILE_READ_CAP = 200_000
-MEMORY_MAX_CHUNKS = 4
 MEMORY_BUDGET_TOKENS = 800
 MEMORY_CHUNK_CONTEXT_LINES = 2
 ARTIFACT_WINDOW_LINES = 15
@@ -123,20 +122,20 @@ def query_terms(text, limit=6):
     return seen
 
 
-def search_curated(home, text, max_chunks=MEMORY_MAX_CHUNKS, budget_tokens=MEMORY_BUDGET_TOKENS):
+def search_curated(home, text):
     """Bounded literal keyword search over the curated allowlist.
 
     Terms are matched as plain substrings (no regex compiled from input, so
     nothing needs escaping and there is no catastrophic-backtracking surface).
     Ranks a file whose own task id/stem names a query term ahead of a body-only
-    match, then by hit count, then returns small dated-context chunks within
-    the token budget. Cost is bounded by the candidate-file and per-file caps
+    match, then by hit count, then returns one small dated-context excerpt.
+    Cost is bounded by the candidate-file and per-file caps
     above, not by conversation length: this never reads anything but the fixed
     curated corpus.
     """
     terms = query_terms(text)
     if not terms:
-        return []
+        return None
     candidates = []
     for relpath in curated_relpaths(home):
         content = read_capped(home / "data" / relpath, MEMORY_FILE_READ_CAP)
@@ -155,28 +154,30 @@ def search_curated(home, text, max_chunks=MEMORY_MAX_CHUNKS, budget_tokens=MEMOR
             continue
         candidates.append((id_match, best_score, relpath, lines, best_line))
     candidates.sort(key=lambda row: (not row[0], -row[1], row[2]))
-    results = []
-    used_tokens = 0
     for id_match, score, relpath, lines, line_idx in candidates:
-        if len(results) >= max_chunks:
-            break
         start = max(0, line_idx - MEMORY_CHUNK_CONTEXT_LINES)
         end = min(len(lines), line_idx + MEMORY_CHUNK_CONTEXT_LINES + 1)
         excerpt = "\n".join(lines[start:end]).strip()
         if not excerpt:
             continue
-        tokens = estimate_tokens(excerpt)
-        if results and used_tokens + tokens > budget_tokens:
-            break
-        used_tokens += tokens
-        results.append({
+        encoded = excerpt.encode("utf-8")
+        cap = MEMORY_BUDGET_TOKENS * 3
+        if len(encoded) > cap:
+            matched_line = lines[line_idx]
+            hit = min((matched_line.lower().find(term) for term in terms
+                       if term in matched_line.lower()), default=0)
+            offset = len(("\n".join(lines[start:line_idx]) + ("\n" if start < line_idx else "")
+                          + matched_line[:hit]).encode("utf-8"))
+            left = max(0, min(offset - cap // 2, len(encoded) - cap))
+            excerpt = encoded[left:left + cap].decode("utf-8", "ignore")
+        return {
             "file": relpath,
             "line": line_idx + 1,
             "excerpt": excerpt,
             "id_match": id_match,
             "artifact": artifact_id(relpath),
-        })
-    return results
+        }
+    return None
 
 
 def artifact_view(home, art_id, line):
@@ -437,10 +438,8 @@ class ConsoleService:
         with self.lock:
             if note_id in self.excerpt_cache:
                 return self.excerpt_cache[note_id]
-        matches = search_curated(self.home, text)
-        excerpt = None
-        if matches:
-            excerpt = dict(matches[0])
+        excerpt = search_curated(self.home, text)
+        if excerpt:
             excerpt["excerpt"] = safe_text(excerpt["excerpt"], 2000)
         with self.lock:
             if len(self.excerpt_cache) > 500:

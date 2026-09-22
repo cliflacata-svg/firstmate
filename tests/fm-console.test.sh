@@ -8,6 +8,8 @@ from concurrent.futures import ThreadPoolExecutor
 import http.client
 import importlib.util
 import json
+import os
+import subprocess
 from pathlib import Path
 import tempfile
 import threading
@@ -48,9 +50,16 @@ with tempfile.TemporaryDirectory(prefix="fm-console-test-", dir=root) as temp:
 
     relpaths = module.curated_relpaths(home)
     assert set(relpaths) == {"captain.md", "learnings.md", "task-report-fixture/report.md"}, relpaths
-    matches = module.search_curated(home, "what is the captain's answer style")
-    assert matches and matches[0]["file"] == "captain.md", matches
-    assert all(match["file"] != "secret-notes.md" for match in matches), "leaked a non-allowlisted file"
+    match = module.search_curated(home, "what is the captain's answer style")
+    assert match and match["file"] == "captain.md", match
+    assert module.search_curated(home, "zzzznonmatching") is None
+    report = home / "data/task-report-fixture/report.md"
+    report.write_text("界" * 1500 + " answer " + "界" * 1500)
+    match = module.search_curated(home, "task-report-fixture answer")
+    assert match["file"] == "task-report-fixture/report.md", match
+    assert "answer" in match["excerpt"]
+    assert module.estimate_tokens(match["excerpt"]) <= module.MEMORY_BUDGET_TOKENS
+    report.write_text("# Report\nUnrelated content about deployments.\n")
     assert module.resolve_artifact(home, "../../../etc/passwd") is None
     assert module.resolve_artifact(home, "secret-notes.md") is None, "non-allowlisted file must not resolve"
     assert module.read_curated_through(home) == ""
@@ -60,6 +69,48 @@ with tempfile.TemporaryDirectory(prefix="fm-console-test-", dir=root) as temp:
     except ValueError:
         pass
     print("pass: curated_relpaths, search_curated, and artifact confinement (module level)")
+
+    receipt_home = Path(temp) / "receipt-home"
+    receipt_inbox = receipt_home / "state/inbox"
+    (receipt_inbox / ".replies").mkdir(parents=True)
+    for number in range(1, 46):
+        note_id = f"legacy-{number:04d}"
+        (receipt_inbox / f"{note_id}.note").write_text(f"id={note_id}\n--\norder {number}\n")
+        (receipt_inbox / ".replies" / note_id).write_text(
+            f"id={note_id}\nseq={number}\n--\nanswer {number}\n")
+    receipt_env = dict(os.environ, FM_HOME=str(receipt_home), FM_STATE_OVERRIDE=str(receipt_home / "state"))
+    receipt_command = [str(root / "bin/fm-inbox.sh")]
+    def read_receipts(after="", guarded=False):
+        env = dict(receipt_env)
+        if guarded:
+            env.update(PYTHONPATH=str(guard), RECEIPT_GUARD=str(receipt_inbox))
+        proc = subprocess.run(receipt_command + ["receipts", "--after", after],
+                              env=env, text=True, capture_output=True, check=True)
+        return json.loads(proc.stdout)
+    initial = read_receipts()
+    assert len(initial["pending"]) == len(initial["replies"]) == 20
+    guard = Path(temp) / "guard"
+    guard.mkdir()
+    (guard / "sitecustomize.py").write_text("""import os, sys
+prefix = os.environ['RECEIPT_GUARD']
+def audit(event, args):
+    if event in ('open', 'os.scandir', 'os.listdir') and isinstance(args[0], (str, bytes)):
+        path = os.fsdecode(args[0])
+        if path == prefix or path.startswith(prefix + '/'):
+            raise RuntimeError('receipt retrieval accessed historical records: ' + path)
+sys.addaudithook(audit)
+""")
+    assert read_receipts(guarded=True)["replies"] == initial["replies"]
+    second = read_receipts(initial["reply_cursor"], guarded=True)
+    third = read_receipts(second["reply_cursor"], guarded=True)
+    assert len(second["replies"]) == 20 and len(third["replies"]) == 5
+    assert [row["cursor"] for page in (initial, second, third) for row in page["replies"]] == [
+        f"{number:012d}" for number in range(1, 46)]
+    assert read_receipts(third["reply_cursor"], guarded=True)["replies"] == []
+    subprocess.run(receipt_command + ["drain", "--ack", "legacy-0001"],
+                   env=receipt_env, check=True, capture_output=True)
+    assert read_receipts(guarded=True)["handled"][0]["id"] == "legacy-0001"
+    print("pass: legacy import, bounded indexed pages, empty polls, and acknowledgement refresh")
 
     fixture = {
         "schema": "fm-bearings.v1", "generated": "2026-09-21T12:00:00Z",

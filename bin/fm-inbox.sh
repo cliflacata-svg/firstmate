@@ -126,6 +126,14 @@ INBOX="$STATE/inbox"
 
 CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 
+if [ "${FM_INBOX_RECEIPT_OWNER:-}" != 1 ]; then
+  case "${1:-}" in
+    note|announce|reply|receipts|drain|say)
+      exec python3 "$SELF_DIR/fm-inbox-receipts.py" "$STATE" "$FM_HOME" "$@"
+      ;;
+  esac
+fi
+
 die() { printf 'fm-inbox: %s\n' "$*" >&2; exit 1; }
 
 # First non-comment, non-blank line of a config file, or nothing.
