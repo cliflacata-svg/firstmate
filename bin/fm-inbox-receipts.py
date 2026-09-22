@@ -93,6 +93,7 @@ def refresh_note(db, meta, command, env, note_id):
 
 
 def main():
+    os.umask(0o077)
     state, home = map(Path, sys.argv[1:3])
     args = sys.argv[3:]
     state.mkdir(parents=True, exist_ok=True)
@@ -101,7 +102,18 @@ def main():
     command = [str(Path(__file__).with_name("fm-inbox.sh"))]
     with (state / ".inbox-receipts.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        with sqlite3.connect(state / ".inbox-receipts.sqlite3") as db:
+        database = state / ".inbox-receipts.sqlite3"
+        fd = os.open(database, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            os.fchmod(fd, 0o600)
+        finally:
+            os.close(fd)
+        for suffix in ("-journal", "-wal", "-shm"):
+            try:
+                Path(str(database) + suffix).chmod(0o600)
+            except FileNotFoundError:
+                pass
+        with sqlite3.connect(database) as db:
             if db.execute("PRAGMA user_version").fetchone()[0] != 2:
                 db.executescript("""
                     BEGIN;

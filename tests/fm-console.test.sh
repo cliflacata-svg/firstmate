@@ -109,16 +109,50 @@ with tempfile.TemporaryDirectory(prefix="fm-console-test-", dir=root) as temp:
         (receipt_inbox / ".replies" / note_id).write_text(
             f"id={note_id}\nseq={number}\n--\nanswer {number}\n")
     receipt_env = dict(os.environ, FM_HOME=str(receipt_home), FM_STATE_OVERRIDE=str(receipt_home / "state"))
+    permission_guard = Path(temp) / "permission-guard"
+    permission_guard.mkdir()
+    (permission_guard / "sitecustomize.py").write_text("""import os, sys, stat
+from pathlib import Path
+def audit(event, args):
+    if event == 'sqlite3.connect':
+        database = Path(args[0])
+        assert stat.S_IMODE(database.stat().st_mode) == 0o600
+        for suffix in ('-journal', '-wal', '-shm'):
+            sidecar = Path(str(database) + suffix)
+            if sidecar.exists():
+                assert stat.S_IMODE(sidecar.stat().st_mode) == 0o600
+sys.addaudithook(audit)
+""")
+    receipt_env["PYTHONPATH"] = str(permission_guard)
     receipt_command = [str(root / "bin/fm-inbox.sh")]
     def read_receipts(after="", guarded=False):
         env = dict(receipt_env)
         if guarded:
             env.update(PYTHONPATH=str(guard), RECEIPT_GUARD=str(receipt_inbox))
         proc = subprocess.run(receipt_command + ["receipts", "--after", after],
-                              env=env, text=True, capture_output=True, check=True, timeout=5)
+                              env=env, text=True, capture_output=True, check=True, timeout=5, umask=0o022)
         return json.loads(proc.stdout)
     initial = read_receipts()
     assert len(initial["pending"]) == len(initial["replies"]) == 20
+    database = receipt_home / "state/.inbox-receipts.sqlite3"
+    assert database.stat().st_mode & 0o777 == 0o600
+    with sqlite3.connect(database) as live_db:
+        live_db.execute("PRAGMA journal_mode=WAL")
+        live_db.execute("UPDATE metadata SET payload=payload")
+        live_db.commit()
+        projection_files = [database] + [Path(str(database) + suffix) for suffix in ("-wal", "-shm")]
+        journal = Path(str(database) + "-journal")
+        journal.touch()
+        projection_files.append(journal)
+        for path in projection_files:
+            assert path.exists()
+            path.chmod(0o644)
+        assert read_receipts()["replies"] == initial["replies"]
+        for path in projection_files:
+            if path.exists():
+                assert path.stat().st_mode & 0o777 == 0o600
+    live_db.close()
+    print("pass: receipt database and SQLite sidecars are private before connecting")
     guard = Path(temp) / "guard"
     guard.mkdir()
     (guard / "sitecustomize.py").write_text("""import os, sys
