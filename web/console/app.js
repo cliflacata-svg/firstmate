@@ -62,23 +62,61 @@ function renderReady(ready) {
   $("readiness").textContent = text;
   $("order-readiness").textContent = `${text}. Observed ${stamp(ready.observed_at)}. Lock: ${ready.lock || "unknown"}; wake consumer: ${ready.wake_consumer || "unknown"}; posture: ${ready.posture || "unknown"}.`;
 }
-function message(title, body, when, foot, answer = false) {
+async function viewArtifact(id, line, target) {
+  target.hidden = false;
+  target.textContent = "Loading source…";
+  try {
+    const view = await api(`/artifact/${encodeURIComponent(id)}${line ? `?line=${line}` : ""}`);
+    const where = view.line ? `${view.file}:${view.line}` : view.file;
+    target.textContent = `${where}\n\n${view.content}${view.truncated ? "\n…(truncated)" : ""}`;
+  } catch (error) {
+    target.textContent = `Could not load source: ${error.message}`;
+  }
+}
+function excerptBlock(excerpt) {
+  const wrap = node("div", "excerpt");
+  const head = node("div", "excerpt-head");
+  head.append(node("span", "excerpt-label", "Related from memory"), node("span", "excerpt-source", `${excerpt.file}:${excerpt.line}`));
+  const view = node("pre", "excerpt-source-view");
+  view.hidden = true;
+  const button = node("button", "excerpt-view", "View source");
+  button.type = "button";
+  button.addEventListener("click", () => {
+    if (!view.hidden) { view.hidden = true; return; }
+    viewArtifact(excerpt.artifact, excerpt.line, view);
+  });
+  wrap.append(head, node("p", "excerpt-body", excerpt.excerpt), button, view);
+  return wrap;
+}
+function message(title, body, when, foot, answer = false, excerpt = null) {
   const wrap = node("article", answer ? "message answer" : "message");
   wrap.dataset.at = when || "";
   const head = node("div", "message-head");
   head.append(node("strong", "", title), node("span", "", stamp(when)));
   wrap.append(head, node("p", "message-body", body), node("div", "message-foot", foot));
+  if (excerpt) wrap.append(excerptBlock(excerpt));
   return wrap;
+}
+function renderCuration() {
+  const total = replies.size;
+  const status = $("curation-status");
+  if (!total) { status.hidden = true; return; }
+  const uncurated = [...replies.values()].filter(reply => !reply.curated).length;
+  status.hidden = false;
+  status.textContent = uncurated
+    ? `${uncurated} of ${total} durable answers are not yet folded into curated memory.`
+    : `All ${total} durable answers are folded into curated memory.`;
 }
 function renderConversation(omissions = []) {
   const output = [];
   const ordered = [...notes].sort((a, b) => (a.at || "").localeCompare(b.at || ""));
   for (const note of ordered) output.push(message("Order", note.body, note.at, `${stateText(note)} · ${note.id}`));
-  for (const reply of replies.values()) output.push(message("Firstmate answer", reply.body, reply.at, `Reply to ${reply.id} · cursor ${reply.cursor}`, true));
+  for (const reply of replies.values()) output.push(message("Firstmate answer", reply.body, reply.at, `Reply to ${reply.id} · cursor ${reply.cursor}`, true, reply.excerpt));
   output.sort((a, b) => a.dataset.at.localeCompare(b.dataset.at));
   replace("conversation", output.length ? output : [empty("No durable orders or answers shown yet.")]);
   $("receipt-omissions").hidden = !omissions.length;
   replace("receipt-omission-list", omissions.map(text => node("li", "", text)));
+  renderCuration();
 }
 async function api(path, options) {
   const response = await fetch(path, {cache: "no-store", ...options});

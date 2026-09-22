@@ -24,6 +24,11 @@ with tempfile.TemporaryDirectory(prefix="fm-console-test-", dir=root) as temp:
     home = Path(temp) / "home"
     (home / "config").mkdir(parents=True)
     (home / "state").mkdir()
+    (home / "data" / "task-report-fixture").mkdir(parents=True)
+    (home / "data" / "captain.md").write_text("# Captain\nPrefers a concise, direct answer style.\n")
+    (home / "data" / "learnings.md").write_text("# Learnings\nGeneral operational notes.\n")
+    (home / "data" / "task-report-fixture" / "report.md").write_text("# Report\nUnrelated content about deployments.\n")
+    (home / "data" / "secret-notes.md").write_text("Not curated: contains answer too but must never be searched.\n")
     secret_file = home / "config/console-operator-secret"
     try:
         module.read_secret(home)
@@ -40,6 +45,22 @@ with tempfile.TemporaryDirectory(prefix="fm-console-test-", dir=root) as temp:
     except ValueError:
         pass
     secret_file.chmod(0o600)
+
+    relpaths = module.curated_relpaths(home)
+    assert set(relpaths) == {"captain.md", "learnings.md", "task-report-fixture/report.md"}, relpaths
+    matches = module.search_curated(home, "what is the captain's answer style")
+    assert matches and matches[0]["file"] == "captain.md", matches
+    assert all(match["file"] != "secret-notes.md" for match in matches), "leaked a non-allowlisted file"
+    assert module.resolve_artifact(home, "../../../etc/passwd") is None
+    assert module.resolve_artifact(home, "secret-notes.md") is None, "non-allowlisted file must not resolve"
+    assert module.read_curated_through(home) == ""
+    try:
+        module.write_curated_through(home, "not-a-cursor")
+        raise AssertionError("a malformed cursor must be refused")
+    except ValueError:
+        pass
+    print("pass: curated_relpaths, search_curated, and artifact confinement (module level)")
+
     fixture = {
         "schema": "fm-bearings.v1", "generated": "2026-09-21T12:00:00Z",
         "in_flight": [{"id": "task-1", "name": "Build UI", "state": "working", "repo": "firstmate", "doing": "Editing /secret/file"}],
@@ -113,6 +134,27 @@ with tempfile.TemporaryDirectory(prefix="fm-console-test-", dir=root) as temp:
                               env=service.env(), check=True, capture_output=True)
         receipts = request("GET", "/api/receipts?after=")[1]
         assert receipts["replies"][0]["body"] == "Answer from primary"
+        reply_cursor = receipts["replies"][0]["cursor"]
+        assert receipts["curated_through"] == ""
+        assert receipts["replies"][0]["curated"] is False
+        excerpt = receipts["replies"][0]["excerpt"]
+        assert excerpt["file"] == "captain.md", excerpt
+        assert excerpt["artifact"] == "captain.md"
+        assert "answer" in excerpt["excerpt"].lower()
+        assert "secret-notes.md" not in json.dumps(receipts), "leaked a non-allowlisted file into an answer"
+        artifact = request("GET", "/artifact/" + excerpt["artifact"])[1]
+        assert artifact["file"] == "captain.md" and "answer" in artifact["content"].lower()
+        windowed = request("GET", f"/artifact/{excerpt['artifact']}?line={excerpt['line']}")[1]
+        assert windowed["line"] == excerpt["line"]
+        assert request("GET", "/artifact/does-not-exist")[0] == 404
+        assert request("GET", "/artifact/secret-notes.md")[0] == 404, "non-allowlisted file must not be servable"
+        assert request("GET", "/artifact/" + excerpt["artifact"] + "?line=0")[0] == 400
+        assert request("GET", "/artifact/" + excerpt["artifact"] + "?line=abc")[0] == 400
+        assert request("GET", "/artifact/" + excerpt["artifact"] + "?line=1&extra=1")[0] == 400
+        module.write_curated_through(home, reply_cursor)
+        receipts = request("GET", "/api/receipts?after=")[1]
+        assert receipts["curated_through"] == reply_cursor
+        assert receipts["replies"][0]["curated"] is True
         assert request("GET", "/api/receipts?after=" + receipts["reply_cursor"])[1]["replies"] == []
         with ThreadPoolExecutor(max_workers=8) as pool:
             results = list(pool.map(lambda _: request("GET", "/api/fleet"), range(8)))
@@ -128,7 +170,8 @@ with tempfile.TemporaryDirectory(prefix="fm-console-test-", dir=root) as temp:
         time.sleep(0.35)
         assert (home / "calls").read_text().count("x") == 1, "no viewers means no new collection"
         assert "Quick ask" in request("GET", "/")[1].decode()
-        print("pass: auth, CSRF, unknown readiness, request replay, replies, omissions, serialized collection")
+        print("pass: auth, CSRF, unknown readiness, request replay, replies, source-linked excerpts, "
+              "the confined artifact route, the curation cursor, omissions, serialized collection")
     finally:
         server.shutdown()
         server.server_close()
@@ -138,15 +181,25 @@ node - "$ROOT/web/console/app.js" <<'JS'
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
+function makeElement() {
+  return {
+    className: "", textContent: "", hidden: false, dataset: {}, children: [],
+    append(...kids) { this.children.push(...kids); },
+    replaceChildren(...kids) { this.children = kids; },
+    addEventListener() {},
+  };
+}
 const elements = new Map();
 const document = {
   getElementById(id) {
-    if (!elements.has(id)) elements.set(id, {textContent: "", hidden: true});
+    if (!elements.has(id)) elements.set(id, makeElement());
     return elements.get(id);
   },
+  createElement() { return makeElement(); },
 };
 const context = vm.createContext({
   document,
+  assert,
   fetch: () => Promise.reject(new Error("fixture offline")),
 });
 vm.runInContext(fs.readFileSync(process.argv[2], "utf8"), context);
@@ -154,5 +207,30 @@ vm.runInContext('renderReady({can_receive:"unknown",observed_at:"2026-09-21T12:0
 assert.match(elements.get("readiness").textContent, /readiness unknown/i);
 assert.match(elements.get("order-readiness").textContent, /may remain pending/i);
 assert.doesNotMatch(elements.get("order-readiness").textContent, /refus/i);
-console.log("pass: browser rendering keeps readiness unknown distinct from refusal");
+
+vm.runInContext(`
+  const block = excerptBlock({file: "captain.md", line: 3, excerpt: "the excerpt text", artifact: "captain.md", id_match: false});
+  assert.equal(block.className, "excerpt");
+  const head = block.children.find(child => child.className === "excerpt-head");
+  const source = head.children.find(child => child.className === "excerpt-source");
+  assert.equal(source.textContent, "captain.md:3");
+  const body = block.children.find(child => child.className === "excerpt-body");
+  assert.equal(body.textContent, "the excerpt text");
+`, context);
+
+vm.runInContext(`
+  replies.set("000000000001", {id: "a", at: "2026-09-21T12:00:00Z", body: "hi", cursor: "000000000001", curated: false});
+  renderCuration();
+`, context);
+assert.match(elements.get("curation-status").textContent, /not yet folded/i);
+assert.equal(elements.get("curation-status").hidden, false);
+
+vm.runInContext(`
+  replies.get("000000000001").curated = true;
+  renderCuration();
+`, context);
+assert.match(elements.get("curation-status").textContent, /folded into curated memory/i);
+
+console.log("pass: browser rendering keeps readiness unknown distinct from refusal, "
+  + "renders a source-linked excerpt, and reflects the curation cursor");
 JS

@@ -391,6 +391,60 @@ h2 {
   font-size:10px;
   color:#82948b
 }
+.excerpt {
+  margin-top:12px;
+  padding:11px 13px;
+  background:#faf6ec;
+  border:1px solid #eadab5;
+  border-radius:9px
+}
+.excerpt-head {
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  font-size:10px;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  color:#a8793e;
+  font-weight:700
+}
+.excerpt-source {
+  color:#8a7143;
+  font-weight:400;
+  text-transform:none;
+  letter-spacing:0
+}
+.excerpt-body {
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  color:#5c4a29;
+  font-size:12px;
+  line-height:1.5;
+  margin:7px 0
+}
+.excerpt-view {
+  background:none;
+  border:1px solid #dcc994;
+  color:#8a7143;
+  border-radius:6px;
+  padding:5px 9px;
+  font-size:10px;
+  font-weight:700
+}
+.excerpt-source-view {
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  background:#fffdf7;
+  border:1px solid #eadab5;
+  border-radius:7px;
+  padding:10px 11px;
+  margin-top:9px;
+  font-size:11px;
+  line-height:1.5;
+  color:#4a3e26;
+  max-height:280px;
+  overflow-y:auto
+}
 a {
   color:#0e5d58
 }

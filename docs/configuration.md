@@ -1097,6 +1097,15 @@ Do work orders remain pending when the primary cannot be confirmed as ready.
 Quick ask is visible but disabled until its model-token ceiling is settled.
 This local service does not provide HTTPS; any later remote access needs a separately reviewed private exposure and authentication arrangement.
 
+Every durable reply already shown in `/api/receipts` carries a `curated` flag and, when a relevant match exists, a small `excerpt` from this home's curated markdown, retrieved deterministically and never through embeddings or a paid API.
+Retrieval walks a fixed allowlist under `data/`: the three curated files (`captain.md`, `captain-shared.md`, `learnings.md`) plus each task's own `data/<task-id>/report.md`, never `data/memory-archive.md` and never a path supplied by the browser.
+Matching is plain literal substring search over that fixed corpus, so its cost is bounded by the corpus and by the bounded page of replies being rendered, never by how much conversation history has accumulated; nothing resembling a growing transcript is ever assembled for a model.
+Each excerpt names its source file and line and an opaque `artifact` id; fetch `GET /artifact/<id>[?line=N]` (same authentication as every other route) for a bounded, line-windowed view of that same allowlisted file.
+The route is a confined lookup through the identical allowlist, never a static directory: an id that does not resolve to an allowlisted file is a 404, not a filesystem read.
+A home's curation cursor lives in `state/console-curated-through`, a single 12-digit reply cursor from `/api/receipts`.
+Run `FM_HOME=/path/to/operational-home bin/fm-console.py --mark-curated <cursor>` to advance it once a batched pass has folded durable replies through that cursor into this home's curated memory; the console never advances it on its own.
+Until it is advanced, `/api/receipts` and the page's "Do work" panel keep showing how many durable answers are not yet folded in.
+
 ## Spoken interface and captain inbox (config/voice-*, config/inbox-*)
 
 The spoken interface in [`docs/voice-relay.md`](voice-relay.md) and the model-backed subcommands of `bin/fm-inbox.sh` reach a paid API in a named account, so no region, model id or AWS profile is shipped as a tracked default.

@@ -2,8 +2,12 @@
 """Loopback operator console for one explicitly selected Firstmate home.
 
 Usage: FM_HOME=/path/to/home bin/fm-console.py [--port 8765]
+       FM_HOME=/path/to/home bin/fm-console.py --mark-curated <cursor>
 The operator secret is read from FM_HOME/config/console-operator-secret at startup.
 This process does not manage a fleet session or configure network exposure.
+`--mark-curated` records a reply cursor from `/api/receipts` as curated and exits
+without serving; a batched curation pass (see docs/configuration.md) runs it after
+folding durable replies through that cursor into the home's curated memory.
 """
 
 import argparse
@@ -29,6 +33,205 @@ REQUEST_ID = re.compile(r"(?!\.)[A-Za-z0-9._:-]{1,128}\Z")
 CURSOR = re.compile(r"[0-9]{12}\Z")
 ABS_PATH = re.compile(r"(?<![A-Za-z0-9])(?:/[^\s,;()<>]+|~\/[^\s,;()<>]+)")
 URL = re.compile(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/(?:pull|issues)/[0-9]+\Z")
+
+# ---------------------------------------------------------------- memory
+#
+# Deterministic bounded keyword retrieval over one home's curated markdown -
+# never embeddings, never a paid API. The allowlist below is the entire
+# confinement boundary: search and the artifact route both walk it, never a
+# client-supplied filesystem path, so a browser request can name a match but
+# never a location. Cost is bounded per call by the fixed candidate-file and
+# per-file byte caps, not by how much conversation history has accumulated;
+# see docs/configuration.md's "Loopback operator console" section.
+
+CURATED_FIXED = ("captain.md", "captain-shared.md", "learnings.md")
+TASK_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,80}\Z")
+ARTIFACT_ID = re.compile(r"[A-Za-z0-9._-]{1,160}\Z")
+WORD = re.compile(r"[A-Za-z0-9][A-Za-z0-9'-]{3,39}")
+
+MEMORY_MAX_CANDIDATE_FILES = 40
+MEMORY_FILE_READ_CAP = 200_000
+MEMORY_MAX_CHUNKS = 4
+MEMORY_BUDGET_TOKENS = 800
+MEMORY_CHUNK_CONTEXT_LINES = 2
+ARTIFACT_WINDOW_LINES = 15
+ARTIFACT_DEFAULT_LINES = 80
+ARTIFACT_CONTENT_CAP = 6000
+CURATED_THROUGH_NAME = "console-curated-through"
+
+
+def estimate_tokens(text):
+    """Same conservative ceil(UTF-8 bytes / 3) estimate as the startup-memory budget helper."""
+    return -(-len(text.encode("utf-8", "replace")) // 3)
+
+
+def read_capped(path, cap):
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    return data[:cap].decode("utf-8", "replace")
+
+
+def curated_relpaths(home):
+    """Enumerate this home's allowlisted curated markdown, as paths relative to data/.
+
+    Confined by construction: the fixed files plus one report.md per task-id-shaped
+    subdirectory. data/memory-archive.md is deliberately excluded; it is explicit
+    historical-lookup-only material, never blended into ordinary retrieval.
+    """
+    data_dir = home / "data"
+    relpaths = []
+    for name in CURATED_FIXED:
+        candidate = data_dir / name
+        if candidate.is_file() and not candidate.is_symlink():
+            relpaths.append(name)
+    if data_dir.is_dir():
+        for child in sorted(data_dir.iterdir()):
+            if len(relpaths) >= MEMORY_MAX_CANDIDATE_FILES:
+                break
+            if not child.is_dir() or child.is_symlink() or not TASK_ID.fullmatch(child.name):
+                continue
+            report = child / "report.md"
+            if report.is_file() and not report.is_symlink():
+                relpaths.append(f"{child.name}/report.md")
+    return relpaths
+
+
+def artifact_id(relpath):
+    return relpath.replace("/", "__")
+
+
+def resolve_artifact(home, art_id):
+    """<path, relpath> for an allowlisted artifact id, or None. Never accepts a raw path."""
+    if not ARTIFACT_ID.fullmatch(art_id):
+        return None
+    for relpath in curated_relpaths(home):
+        if artifact_id(relpath) == art_id:
+            return home / "data" / relpath, relpath
+    return None
+
+
+def query_terms(text, limit=6):
+    seen = []
+    for match in WORD.finditer(text or ""):
+        term = match.group(0).lower()
+        if term not in seen:
+            seen.append(term)
+        if len(seen) >= limit:
+            break
+    return seen
+
+
+def search_curated(home, text, max_chunks=MEMORY_MAX_CHUNKS, budget_tokens=MEMORY_BUDGET_TOKENS):
+    """Bounded literal keyword search over the curated allowlist.
+
+    Terms are matched as plain substrings (no regex compiled from input, so
+    nothing needs escaping and there is no catastrophic-backtracking surface).
+    Ranks a file whose own task id/stem names a query term ahead of a body-only
+    match, then by hit count, then returns small dated-context chunks within
+    the token budget. Cost is bounded by the candidate-file and per-file caps
+    above, not by conversation length: this never reads anything but the fixed
+    curated corpus.
+    """
+    terms = query_terms(text)
+    if not terms:
+        return []
+    candidates = []
+    for relpath in curated_relpaths(home):
+        content = read_capped(home / "data" / relpath, MEMORY_FILE_READ_CAP)
+        if content is None:
+            continue
+        lines = content.split("\n")
+        stem = relpath.split("/", 1)[0].lower()
+        id_match = stem in terms
+        best_line, best_score = 0, 0
+        for idx, line in enumerate(lines):
+            lowered = line.lower()
+            score = sum(1 for term in terms if term in lowered)
+            if score > best_score:
+                best_line, best_score = idx, score
+        if best_score <= 0 and not id_match:
+            continue
+        candidates.append((id_match, best_score, relpath, lines, best_line))
+    candidates.sort(key=lambda row: (not row[0], -row[1], row[2]))
+    results = []
+    used_tokens = 0
+    for id_match, score, relpath, lines, line_idx in candidates:
+        if len(results) >= max_chunks:
+            break
+        start = max(0, line_idx - MEMORY_CHUNK_CONTEXT_LINES)
+        end = min(len(lines), line_idx + MEMORY_CHUNK_CONTEXT_LINES + 1)
+        excerpt = "\n".join(lines[start:end]).strip()
+        if not excerpt:
+            continue
+        tokens = estimate_tokens(excerpt)
+        if results and used_tokens + tokens > budget_tokens:
+            break
+        used_tokens += tokens
+        results.append({
+            "file": relpath,
+            "line": line_idx + 1,
+            "excerpt": excerpt,
+            "id_match": id_match,
+            "artifact": artifact_id(relpath),
+        })
+    return results
+
+
+def artifact_view(home, art_id, line):
+    resolved = resolve_artifact(home, art_id)
+    if resolved is None:
+        return None
+    path, relpath = resolved
+    content = read_capped(path, MEMORY_FILE_READ_CAP)
+    if content is None:
+        return None
+    lines = content.split("\n")
+    truncated = False
+    if line is not None:
+        line_idx = min(max(line - 1, 0), max(len(lines) - 1, 0))
+        start = max(0, line_idx - ARTIFACT_WINDOW_LINES)
+        end = min(len(lines), line_idx + ARTIFACT_WINDOW_LINES + 1)
+        shown_line = line_idx + 1
+    else:
+        start, end = 0, min(len(lines), ARTIFACT_DEFAULT_LINES)
+        truncated = len(lines) > ARTIFACT_DEFAULT_LINES
+        shown_line = None
+    snippet = "\n".join(lines[start:end])
+    encoded = snippet.encode("utf-8")
+    if len(encoded) > ARTIFACT_CONTENT_CAP:
+        snippet = encoded[:ARTIFACT_CONTENT_CAP].decode("utf-8", "ignore")
+        truncated = True
+    return {
+        "schema": "fm-console-artifact.v1",
+        "file": relpath,
+        "line": shown_line,
+        "content": safe_text(snippet, ARTIFACT_CONTENT_CAP),
+        "truncated": truncated,
+    }
+
+
+def curated_through_path(home):
+    return home / "state" / CURATED_THROUGH_NAME
+
+
+def read_curated_through(home):
+    try:
+        value = curated_through_path(home).read_text().strip()
+    except OSError:
+        return ""
+    return value if CURSOR.fullmatch(value) else ""
+
+
+def write_curated_through(home, cursor):
+    if not CURSOR.fullmatch(cursor):
+        raise ValueError("cursor must be the 12-digit reply cursor from /api/receipts")
+    state_dir = home / "state"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    tmp = state_dir / f".{CURATED_THROUGH_NAME}.tmp-{os.getpid()}"
+    tmp.write_text(cursor + "\n")
+    tmp.replace(curated_through_path(home))
 
 
 def now_iso():
@@ -93,9 +296,10 @@ def fleet_view(raw):
     return result
 
 
-def receipt_view(raw):
+def receipt_view(raw, home, excerpt_fn):
     if not isinstance(raw, dict) or raw.get("schema") != "fm-inbox-receipts.v1":
         raise ValueError("invalid receipts schema")
+    curated_through = read_curated_through(home)
     def note(item):
         reply = item.get("reply") if isinstance(item.get("reply"), dict) else None
         return {
@@ -106,7 +310,13 @@ def receipt_view(raw):
             "replied": reply is not None,
         }
     def reply(item):
-        return fields(item, {"id": 100, "at": 40, "body": 16000, "cursor": 20})
+        rec = fields(item, {"id": 100, "at": 40, "body": 16000, "cursor": 20})
+        cursor = rec.get("cursor", "")
+        rec["curated"] = bool(curated_through) and bool(CURSOR.fullmatch(cursor)) and cursor <= curated_through
+        note_id = item.get("id") if isinstance(item.get("id"), str) else ""
+        body = item.get("body") if isinstance(item.get("body"), str) else ""
+        rec["excerpt"] = excerpt_fn(note_id, body) if note_id and body else None
+        return rec
     omitted = disclosures(raw.get("omitted"))
     for group in ("pending", "handled"):
         for item in raw.get(group, [])[:20]:
@@ -122,6 +332,7 @@ def receipt_view(raw):
         "handled": [note(x) for x in raw.get("handled", [])[:20] if isinstance(x, dict)],
         "replies": [reply(x) for x in raw.get("replies", [])[:20] if isinstance(x, dict)],
         "reply_cursor": safe_text(raw.get("reply_cursor"), 20),
+        "curated_through": curated_through,
         "omitted": omitted,
     }
 
@@ -161,6 +372,7 @@ class ConsoleService:
         self.last_start = 0.0
         self.recent_orders = {}
         self.order_slots = threading.BoundedSemaphore(4)
+        self.excerpt_cache = {}
 
     def env(self):
         env = {k: v for k, v in os.environ.items() if not k.startswith("FM_")}
@@ -214,7 +426,27 @@ class ConsoleService:
         args = [str(self.inbox_bin), "receipts"]
         if after:
             args += ["--after", after]
-        return receipt_view(self.json_command(args))
+        return receipt_view(self.json_command(args), self.home, self.excerpt_for)
+
+    def excerpt_for(self, note_id, text):
+        """Retrieved memory excerpt for one reply's answer, computed once per note id.
+
+        Caching here, not in search_curated, is what keeps retrieval cost tied to
+        genuinely new answers rather than to every poll of the same durable reply.
+        """
+        with self.lock:
+            if note_id in self.excerpt_cache:
+                return self.excerpt_cache[note_id]
+        matches = search_curated(self.home, text)
+        excerpt = None
+        if matches:
+            excerpt = dict(matches[0])
+            excerpt["excerpt"] = safe_text(excerpt["excerpt"], 2000)
+        with self.lock:
+            if len(self.excerpt_cache) > 500:
+                self.excerpt_cache.clear()
+            self.excerpt_cache[note_id] = excerpt
+        return excerpt
 
     def ready(self):
         return readiness_view(self.json_command([str(self.inbox_bin), "ready"]))
@@ -335,7 +567,35 @@ class Handler(BaseHTTPRequestHandler):
             except (OSError, ValueError, subprocess.TimeoutExpired):
                 self.send(503, {"error": "Receipts unavailable"})
             return
+        if path.path.startswith("/artifact/"):
+            self.serve_artifact(path)
+            return
         self.send(404, {"error": "not found"})
+
+    def serve_artifact(self, path):
+        art_id = path.path[len("/artifact/"):]
+        query = parse_qs(path.query, keep_blank_values=True)
+        line_values = query.pop("line", None)
+        if query:
+            self.send(400, {"error": "invalid artifact query"})
+            return
+        line = None
+        if line_values is not None:
+            if len(line_values) != 1 or not line_values[0].isdigit():
+                self.send(400, {"error": "invalid line"})
+                return
+            line = int(line_values[0])
+            if not 1 <= line <= 1_000_000:
+                self.send(400, {"error": "invalid line"})
+                return
+        if not ARTIFACT_ID.fullmatch(art_id):
+            self.send(404, {"error": "not found"})
+            return
+        view = artifact_view(self.service.home, art_id, line)
+        if view is None:
+            self.send(404, {"error": "not found"})
+            return
+        self.send(200, view)
 
     def do_POST(self):
         if not self.guarded():
@@ -411,13 +671,22 @@ def read_secret(home):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--mark-curated", metavar="CURSOR",
+                         help="record CURSOR (from /api/receipts) as curated, then exit without serving")
     args = parser.parse_args()
-    if not 1 <= args.port <= 65535:
+    if args.mark_curated is None and not 1 <= args.port <= 65535:
         parser.error("port must be 1-65535")
     home_text = os.environ.get("FM_HOME")
     if not home_text:
         parser.error("FM_HOME must select one operational home")
     home = Path(home_text).resolve(strict=True)
+    if args.mark_curated is not None:
+        try:
+            write_curated_through(home, args.mark_curated)
+        except ValueError as error:
+            parser.error(str(error))
+        print(f"Recorded curated-through cursor {args.mark_curated} for {home}", flush=True)
+        return
     try:
         service = ConsoleService(home, read_secret(home))
     except ValueError as error:
