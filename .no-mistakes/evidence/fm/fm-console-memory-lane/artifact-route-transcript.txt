@@ -1,0 +1,38 @@
+$ GET /artifact/fix-login-timeout__report.md?line=2
+{"schema":"fm-console-artifact.v1","file":"fix-login-timeout/report.md","line":2,"content":"# fix-login-timeout report\nRoot cause: the session refresh timer used seconds where milliseconds were expected.\nThe login timeout now uses a 30 minute idle window.\nShipped in PR 812.\n","truncated":false}  [HTTP 200]
+
+$ GET /artifact/learnings.md
+{"schema":"fm-console-artifact.v1","file":"learnings.md","line":null,"content":"# Learnings\n- 2026-09-01: Always pin the herdr socket path per session.\n- 2026-09-10: The quarantine lane rejects unsigned tarballs; resign before retry.\n","truncated":false}  [HTTP 200]
+
+$ GET /artifact/memory-archive.md
+{"error":"not found"}  [HTTP 404]
+
+$ GET /artifact/..__outside.md
+{"error":"not found"}  [HTTP 404]
+
+$ GET /artifact/../outside.md
+{"error":"not found"}  [HTTP 404]
+
+$ GET /artifact/%2e%2e%2foutside.md
+{"error":"not found"}  [HTTP 404]
+
+$ GET /artifact/captain.md
+{"error":"not found"}  [HTTP 404]
+
+$ GET /artifact/evil-task__report.md
+{"error":"not found"}  [HTTP 404]
+
+$ GET /artifact/learnings.md?line=abc
+{"error":"invalid line"}  [HTTP 400]
+
+$ GET /artifact/learnings.md?path=/etc/passwd
+{"error":"invalid artifact query"}  [HTTP 400]
+
+$ GET /data/learnings.md
+{"error":"not found"}  [HTTP 404]
+
+$ GET /artifact/%2Fetc%2Fpasswd
+{"error":"not found"}  [HTTP 404]
+
+$ GET /artifact/learnings.md (no auth)
+401

@@ -1,0 +1,5 @@
+== Poll latency: fm-inbox.sh receipts --after <latest> (median of 7 runs)
+small-2-replies: median 47 ms
+big-5000-replies: median 47 ms
+== Reference: owner full-history enumeration on big home (the pre-fix path)
+full scan: 265 ms

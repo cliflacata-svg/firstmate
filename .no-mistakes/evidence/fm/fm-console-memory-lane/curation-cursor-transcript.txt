@@ -1,0 +1,10 @@
+$ fm-console.py --mark-curated 12345 (invalid)
+fm-console.py: error: cursor must be the 12-digit reply cursor from /api/receipts
+exit=0
+$ fm-console.py --mark-curated 000000000001
+Recorded curated-through cursor 000000000001 for /tmp/fmconsole-home.H9qX
+state/console-curated-through: 000000000001
+$ GET /api/receipts (curated flags + cursor)
+curated_through= 000000000001 reply_cursor= 000000000002
+000000000001 curated= True
+000000000002 curated= False

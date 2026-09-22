@@ -1,0 +1,70 @@
+$ GET /api/receipts
+{
+    "schema": "fm-console-receipts.v1",
+    "observed_at": "2026-09-22T20:45:56Z",
+    "pending": [],
+    "handled": [
+        {
+            "id": "1790109941-aiLbfU",
+            "at": "2026-09-22T20:45:41Z",
+            "request_id": "",
+            "body": "What happened with the login timeout fix?",
+            "saved": true,
+            "announced": true,
+            "acknowledged": true,
+            "replied": true
+        },
+        {
+            "id": "1790109941-45XtgE",
+            "at": "2026-09-22T20:45:41Z",
+            "request_id": "",
+            "body": "Why does the quarantine lane reject uploads?",
+            "saved": true,
+            "announced": true,
+            "acknowledged": true,
+            "replied": true
+        }
+    ],
+    "replies": [
+        {
+            "id": "1790109941-aiLbfU",
+            "at": "2026-09-22T20:45:46Z",
+            "body": "The login timeout fix shipped: session refresh timer unit bug, now a 30 minute idle window.",
+            "cursor": "000000000001",
+            "curated": false,
+            "excerpt": {
+                "file": "fix-login-timeout/report.md",
+                "line": 2,
+                "excerpt": "# fix-login-timeout report\nRoot cause: the session refresh timer used seconds where milliseconds were expected.\nThe login timeout now uses a 30 minute idle window.\nShipped in PR 812.",
+                "id_match": false,
+                "artifact": "fix-login-timeout__report.md"
+            }
+        },
+        {
+            "id": "1790109941-45XtgE",
+            "at": "2026-09-22T20:45:46Z",
+            "body": "The quarantine lane rejects unsigned tarballs; resign before retry.",
+            "cursor": "000000000002",
+            "curated": false,
+            "excerpt": {
+                "file": "learnings.md",
+                "line": 3,
+                "excerpt": "# Learnings\n- 2026-09-01: Always pin the herdr socket path per session.\n- 2026-09-10: The quarantine lane rejects unsigned tarballs; resign before retry.",
+                "id_match": false,
+                "artifact": "learnings.md"
+            }
+        }
+    ],
+    "reply_cursor": "000000000002",
+    "curated_through": "",
+    "omitted": []
+}
+
+$ GET /api/receipts (no auth)
+401
+$ GET /api/receipts?after=000000000001
+['000000000002'] 000000000002 
+$ GET /api/receipts?after=000000000002
+[] 000000000002
+$ GET /api/receipts?after=../etc
+{"error":"invalid cursor"} 400

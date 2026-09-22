@@ -1,0 +1,6 @@
+== big home: 5000 task report dirs + 5001 durable replies; new reply cursor 000000005001
+$ time GET /api/receipts?after=000000005000
+0.06 s
+000000005001 {"file": "learnings.md", "line": 3, "excerpt": "# Learnings\n- 2026-09-01: Always pin the herdr socket path per session.\n- 2026-09-10: The quarantine lane rejects unsigned tarballs; resign before retry.", "id_match": false, "artifact": "learnings.md"}
+reply_cursor 000000005001
+== audit: search_curated over 5000 task dirs opened 40 markdown files in 4 ms (cap 40); excerpt bytes=153 (budget 2400)

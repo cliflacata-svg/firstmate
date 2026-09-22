@@ -1,0 +1,63 @@
+DIRECT TO FIRSTMATE
+
+Do work
+Durable orders
+Primary cannot receive work now · orders remain pending. Observed 9/22/2026, 4:46:59 PM. Lock: free; wake consumer: unknown; posture: present.
+Your order
+Multiline text is preserved. A saved order can remain pending.
+Send order ↗
+
+DURABLE RECORD
+
+Orders & answers
+Observed 9/22/2026, 4:46:59 PM
+1 of 2 durable answers are not yet folded into curated memory.
+Order
+9/22/2026, 4:45:41 PM
+
+What happened with the login timeout fix?
+
+Replied · 1790109941-aiLbfU
+Order
+9/22/2026, 4:45:41 PM
+
+Why does the quarantine lane reject uploads?
+
+Replied · 1790109941-45XtgE
+Firstmate answer
+9/22/2026, 4:45:46 PM
+
+The login timeout fix shipped: session refresh timer unit bug, now a 30 minute idle window.
+
+Reply to 1790109941-aiLbfU · cursor 000000000001
+RELATED FROM MEMORY
+fix-login-timeout/report.md:2
+
+# fix-login-timeout report
+Root cause: the session refresh timer used seconds where milliseconds were expected.
+The login timeout now uses a 30 minute idle window.
+Shipped in PR 812.
+
+View source
+Firstmate answer
+9/22/2026, 4:45:46 PM
+
+The quarantine lane rejects unsigned tarballs; resign before retry.
+
+Reply to 1790109941-45XtgE · cursor 000000000002
+RELATED FROM MEMORY
+learnings.md:3
+
+# Learnings
+- 2026-09-01: Always pin the herdr socket path per session.
+- 2026-09-10: The quarantine lane rejects unsigned tarballs; resign before retry.
+
+View source
+---- after View source ----
+fix-login-timeout/report.md:2
+
+# fix-login-timeout report
+Root cause: the session refresh timer used seconds where milliseconds were expected.
+The login timeout now uses a 30 minute idle window.
+Shipped in PR 812.
+

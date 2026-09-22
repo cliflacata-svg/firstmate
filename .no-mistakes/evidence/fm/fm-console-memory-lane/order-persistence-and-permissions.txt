@@ -1,0 +1,11 @@
+$ POST /api/order (console order)
+{"schema":"fm-console-order.v1","request_id":"live-test-001","id":"1790110074-O8Jy1g","outcome":"created","saved":true,"announced":true,"acknowledged":false,"replied":false,"readiness":{"schema":"fm-console-ready.v1","observed_at":"2026-09-22T20:47:54Z","can_receive":false,"lock":"free","wake_consumer":"unknown","posture":"present"},"pending":true}
+$ restart console
+$ GET /api/receipts after restart
+pending: [('live-test-001', 'Please audit the herdr socket pinning.')]
+replies: [('000000000001', True, 'fix-login-timeout/report.md'), ('000000000002', False, 'learnings.md')]
+curated_through: 000000000001
+$ receipt projection permissions (umask 022 home)
+before: -rw-r--r--
+after: -rw------- .inbox-receipts.lock
+after: -rw------- .inbox-receipts.sqlite3
