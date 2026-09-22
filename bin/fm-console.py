@@ -15,6 +15,7 @@ import base64
 import binascii
 import hmac
 import json
+from itertools import islice
 import os
 from pathlib import Path
 import re
@@ -86,14 +87,16 @@ def curated_relpaths(home):
         if candidate.is_file() and not candidate.is_symlink():
             relpaths.append(name)
     if data_dir.is_dir():
-        for child in sorted(data_dir.iterdir()):
-            if len(relpaths) >= MEMORY_MAX_CANDIDATE_FILES:
-                break
-            if not child.is_dir() or child.is_symlink() or not TASK_ID.fullmatch(child.name):
-                continue
-            report = child / "report.md"
-            if report.is_file() and not report.is_symlink():
-                relpaths.append(f"{child.name}/report.md")
+        with os.scandir(data_dir) as entries:
+            for entry in islice(entries, MEMORY_MAX_CANDIDATE_FILES):
+                if len(relpaths) >= MEMORY_MAX_CANDIDATE_FILES:
+                    break
+                if not TASK_ID.fullmatch(entry.name) or not entry.is_dir(follow_symlinks=False):
+                    continue
+                report = data_dir / entry.name / "report.md"
+                if report.is_file() and not report.is_symlink():
+                    relpaths.append(f"{entry.name}/report.md")
+    relpaths.sort()
     return relpaths
 
 

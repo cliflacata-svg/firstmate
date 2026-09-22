@@ -6,11 +6,14 @@ python3 - "$ROOT" <<'PY'
 import base64
 from concurrent.futures import ThreadPoolExecutor
 import http.client
+import fcntl
 import importlib.util
 import json
 import os
 import subprocess
+import sqlite3
 from pathlib import Path
+from unittest.mock import patch
 import tempfile
 import threading
 import time
@@ -60,6 +63,33 @@ with tempfile.TemporaryDirectory(prefix="fm-console-test-", dir=root) as temp:
     assert "answer" in match["excerpt"]
     assert module.estimate_tokens(match["excerpt"]) <= module.MEMORY_BUDGET_TOKENS
     report.write_text("# Report\nUnrelated content about deployments.\n")
+    discovery_home = Path(temp) / "discovery-home"
+    discovery_data = discovery_home / "data"
+    discovery_data.mkdir(parents=True)
+    for number in range(100):
+        folder = discovery_data / f"report-{number:04d}"
+        folder.mkdir()
+        (folder / "report.md").write_text("A matching deployment report")
+    real_scandir = os.scandir
+    class BoundedEntries:
+        def __init__(self, path):
+            self.entries = real_scandir(path)
+            self.read = 0
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            self.entries.close()
+        def __iter__(self):
+            return self
+        def __next__(self):
+            self.read += 1
+            assert self.read <= module.MEMORY_MAX_CANDIDATE_FILES, "candidate discovery exceeded its bound"
+            return next(self.entries)
+    with patch.object(module.os, "scandir", BoundedEntries), patch.object(
+            module.os, "listdir", side_effect=AssertionError("unbounded directory enumeration")):
+        selected = module.search_curated(discovery_home, "deployment")
+        assert selected and "deployment" in selected["excerpt"]
+        assert module.resolve_artifact(discovery_home, selected["artifact"]) is not None
     assert module.resolve_artifact(home, "../../../etc/passwd") is None
     assert module.resolve_artifact(home, "secret-notes.md") is None, "non-allowlisted file must not resolve"
     assert module.read_curated_through(home) == ""
@@ -85,7 +115,7 @@ with tempfile.TemporaryDirectory(prefix="fm-console-test-", dir=root) as temp:
         if guarded:
             env.update(PYTHONPATH=str(guard), RECEIPT_GUARD=str(receipt_inbox))
         proc = subprocess.run(receipt_command + ["receipts", "--after", after],
-                              env=env, text=True, capture_output=True, check=True)
+                              env=env, text=True, capture_output=True, check=True, timeout=5)
         return json.loads(proc.stdout)
     initial = read_receipts()
     assert len(initial["pending"]) == len(initial["replies"]) == 20
@@ -96,7 +126,9 @@ prefix = os.environ['RECEIPT_GUARD']
 def audit(event, args):
     if event in ('open', 'os.scandir', 'os.listdir') and isinstance(args[0], (str, bytes)):
         path = os.fsdecode(args[0])
-        if path == prefix or path.startswith(prefix + '/'):
+        allowed = os.environ.get('RECEIPT_ALLOWED_ID', '')
+        targeted = allowed and path in (prefix + '/' + allowed + '.note', prefix + '/handled/' + allowed + '.note', prefix + '/.replies/' + allowed)
+        if (path == prefix or path.startswith(prefix + '/')) and not targeted:
             raise RuntimeError('receipt retrieval accessed historical records: ' + path)
 sys.addaudithook(audit)
 """)
@@ -107,10 +139,35 @@ sys.addaudithook(audit)
     assert [row["cursor"] for page in (initial, second, third) for row in page["replies"]] == [
         f"{number:012d}" for number in range(1, 46)]
     assert read_receipts(third["reply_cursor"], guarded=True)["replies"] == []
+    mutation_env = dict(receipt_env, PYTHONPATH=str(guard), RECEIPT_GUARD=str(receipt_inbox),
+                        RECEIPT_ALLOWED_ID="legacy-0001")
     subprocess.run(receipt_command + ["drain", "--ack", "legacy-0001"],
-                   env=receipt_env, check=True, capture_output=True)
+                   env=mutation_env, check=True, capture_output=True, timeout=5)
     assert read_receipts(guarded=True)["handled"][0]["id"] == "legacy-0001"
-    print("pass: legacy import, bounded indexed pages, empty polls, and acknowledgement refresh")
+    with sqlite3.connect(receipt_home / "state/.inbox-receipts.sqlite3") as receipt_db:
+        receipt_db.execute("INSERT INTO dirty VALUES (?)", ("legacy-0002",))
+    (receipt_inbox / "legacy-0002.note").replace(receipt_inbox / "handled/legacy-0002.note")
+    recovered = subprocess.run(receipt_command + ["receipts"],
+                               env=dict(mutation_env, RECEIPT_ALLOWED_ID="legacy-0002"),
+                               check=True, capture_output=True, text=True, timeout=5)
+    assert {row["id"] for row in json.loads(recovered.stdout)["handled"]} == {"legacy-0001", "legacy-0002"}
+    with (receipt_home / "state/.inbox-receipts.lock").open("a") as receipt_lock:
+        fcntl.flock(receipt_lock, fcntl.LOCK_EX)
+        subprocess.run(receipt_command + ["drain"], env=receipt_env,
+                       check=True, capture_output=True, timeout=5)
+    waiting_note = subprocess.Popen(receipt_command + ["note", "-"], env=receipt_env,
+                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        time.sleep(0.2)
+        assert waiting_note.poll() is None
+        assert read_receipts(third["reply_cursor"], guarded=True)["replies"] == []
+        waiting_note.communicate(b"new order after waiting for input", timeout=5)
+        assert waiting_note.returncode == 0
+    finally:
+        if waiting_note.poll() is None:
+            waiting_note.kill()
+            waiting_note.communicate()
+    print("pass: indexed pages, targeted mutation refresh, unlocked drain and input capture")
 
     fixture = {
         "schema": "fm-bearings.v1", "generated": "2026-09-21T12:00:00Z",
