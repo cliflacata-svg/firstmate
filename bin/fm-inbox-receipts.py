@@ -2,6 +2,8 @@
 """Serialized inbox receipt projection, imported once and refreshed on owner writes.
 
 The inbox files remain authoritative; the SQLite projection is disposable.
+It mirrors private bodies, so the database and SQLite sidecars must be mode 0600
+before SQLite opens them, including when repairing an existing projection.
 Interrupted publications are reconciled by note id before the next operation.
 Use receipts --rebuild after importing or editing records outside the owner.
 Public commands and receipt bounds are owned by fm-inbox.sh.

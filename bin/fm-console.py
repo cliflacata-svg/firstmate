@@ -41,9 +41,8 @@ URL = re.compile(r"https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/(?:pull|i
 # never embeddings, never a paid API. The allowlist below is the entire
 # confinement boundary: search and the artifact route both walk it, never a
 # client-supplied filesystem path, so a browser request can name a match but
-# never a location. Cost is bounded per call by the fixed candidate-file and
-# per-file byte caps, not by how much conversation history has accumulated;
-# see docs/configuration.md's "Loopback operator console" section.
+# never a location. Retrieval limits are documented in
+# docs/configuration.md's "Loopback operator console" section.
 
 CURATED_FIXED = ("captain.md", "captain-shared.md", "learnings.md")
 TASK_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,80}\Z")
@@ -132,9 +131,8 @@ def search_curated(home, text):
     nothing needs escaping and there is no catastrophic-backtracking surface).
     Ranks a file whose own task id/stem names a query term ahead of a body-only
     match, then by hit count, then returns one small dated-context excerpt.
-    Cost is bounded by the candidate-file and per-file caps
-    above, not by conversation length: this never reads anything but the fixed
-    curated corpus.
+    See docs/configuration.md for retrieval limits, including full-file reads
+    before truncation.
     """
     terms = query_terms(text)
     if not terms:
