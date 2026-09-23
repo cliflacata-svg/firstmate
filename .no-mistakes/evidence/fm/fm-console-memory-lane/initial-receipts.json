@@ -1,0 +1,21 @@
+{
+  "schema": "fm-inbox-receipts.v1",
+  "home": ".console-live/home",
+  "generated": "2026-09-23T19:39:01Z",
+  "omitted": [],
+  "pending": [
+    {
+      "id": "1790192340-ciL3TA",
+      "at": "2026-09-23T19:39:00Z",
+      "source": "text",
+      "request_id": "a9037bd6-c317-49b5-a682-ee6e57182e98",
+      "body": "Check the deployment report and preserve this order.",
+      "acknowledged": false,
+      "announced": true,
+      "reply": null
+    }
+  ],
+  "handled": [],
+  "replies": [],
+  "reply_cursor": ""
+}

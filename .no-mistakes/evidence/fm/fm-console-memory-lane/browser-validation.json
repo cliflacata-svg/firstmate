@@ -1,0 +1,60 @@
+{
+  "answer": "Firstmate answer\n9/23/2026, 3:39:01 PM\n\nDeployment verification is recorded in the deployment report.\n\nReply to 1790192340-ciL3TA · cursor 000000000001\nRELATED FROM MEMORY\ndeployment-check/report.md:1\n\n# Deployment report\nThe deployment verification uses a bounded local memory excerpt.\nRelease approval requires checking the deployment report.\n\nView source",
+  "source": "deployment-check/report.md:1\n\n# Deployment report\nThe deployment verification uses a bounded local memory excerpt.\nRelease approval requires checking the deployment report.\n",
+  "curation": "All 1 durable answers are folded into curated memory.",
+  "guards": [
+    {
+      "path": "/artifact/private.md",
+      "status": 404
+    },
+    {
+      "path": "/artifact/..%2Fconfig%2Fconsole-operator-secret",
+      "status": 404
+    },
+    {
+      "path": "/data/deployment-check/report.md",
+      "status": 404
+    },
+    {
+      "path": "/artifact/deployment-check__report.md?line=0",
+      "status": 400
+    }
+  ],
+  "errors": [],
+  "receipts": {
+    "schema": "fm-console-receipts.v1",
+    "observed_at": "2026-09-23T19:39:02Z",
+    "pending": [],
+    "handled": [
+      {
+        "id": "1790192340-ciL3TA",
+        "at": "2026-09-23T19:39:00Z",
+        "request_id": "a9037bd6-c317-49b5-a682-ee6e57182e98",
+        "body": "Check the deployment report and preserve this order.",
+        "saved": true,
+        "announced": true,
+        "acknowledged": true,
+        "replied": true
+      }
+    ],
+    "replies": [
+      {
+        "id": "1790192340-ciL3TA",
+        "at": "2026-09-23T19:39:01Z",
+        "body": "Deployment verification is recorded in the deployment report.",
+        "cursor": "000000000001",
+        "curated": true,
+        "excerpt": {
+          "file": "deployment-check/report.md",
+          "line": 1,
+          "excerpt": "# Deployment report\nThe deployment verification uses a bounded local memory excerpt.\nRelease approval requires checking the deployment report.",
+          "id_match": false,
+          "artifact": "deployment-check__report.md"
+        }
+      }
+    ],
+    "reply_cursor": "000000000001",
+    "curated_through": "000000000001",
+    "omitted": []
+  }
+}

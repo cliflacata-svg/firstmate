@@ -1,0 +1,57 @@
+{
+  "verdict": "pass",
+  "browser": "Cached Chromium 151 via direct CDP",
+  "wrapperBlocker": "chrome-devtools-axi omits required pageId; pages lists zero pages",
+  "before": {
+    "excerpt": "# Deployment memory\nDeployment verification requires checking the visible source excerpt.",
+    "source": "learnings.md:2",
+    "cursor": "Reply to 1790192219-XPZwUK · cursor 000000000001",
+    "curation": "1 of 1 durable answers are not yet folded into curated memory.",
+    "sourceHidden": true
+  },
+  "after": {
+    "source": "learnings.md:2\n\n# Deployment memory\nDeployment verification requires checking the visible source excerpt.\n",
+    "visible": true,
+    "button": "View source"
+  },
+  "requests": [
+    {
+      "url": "http://127.0.0.1:18765/",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:18765/app.css",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:18765/app.js",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:18765/api/session",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:18765/favicon.ico",
+      "status": 404
+    },
+    {
+      "url": "http://127.0.0.1:18765/api/fleet",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:18765/api/ready",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:18765/api/receipts?after=",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:18765/artifact/learnings.md?line=2",
+      "status": 200
+    }
+  ],
+  "errors": [],
+  "sourceTogglePassed": true
+}

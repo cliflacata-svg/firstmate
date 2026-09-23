@@ -1,0 +1,4 @@
+Browser attempts: chrome-devtools-axi open, newpage, eval, screenshot, pages.
+open/newpage/eval failed with: Invalid arguments: pageId: Invalid input: expected number, received undefined.
+pages reported 0 pages open. screenshot printed a destination but no PNG file was created.
+No visual evidence or browser interaction is claimed.

@@ -1,0 +1,96 @@
+[
+  {
+    "order": {
+      "schema": "fm-console-order.v1",
+      "request_id": "live-0",
+      "id": "1790191823-E0foKZ",
+      "outcome": "created",
+      "saved": true,
+      "announced": true,
+      "acknowledged": false,
+      "replied": false,
+      "readiness": {
+        "schema": "fm-console-ready.v1",
+        "observed_at": "2026-09-23T19:30:23Z",
+        "can_receive": false,
+        "lock": "free",
+        "wake_consumer": "unknown",
+        "posture": "present"
+      },
+      "pending": true
+    },
+    "replay": {
+      "schema": "fm-console-order.v1",
+      "request_id": "live-0",
+      "id": "1790191823-E0foKZ",
+      "outcome": "replay",
+      "saved": true,
+      "announced": true,
+      "acknowledged": false,
+      "replied": false,
+      "readiness": {
+        "schema": "fm-console-ready.v1",
+        "observed_at": "2026-09-23T19:30:23Z",
+        "can_receive": false,
+        "lock": "free",
+        "wake_consumer": "unknown",
+        "posture": "present"
+      },
+      "pending": true
+    }
+  },
+  {
+    "first_page_count": 20,
+    "second_page_count": 3,
+    "sample_reply": {
+      "id": "1790191823-E0foKZ",
+      "at": "2026-09-23T19:30:23Z",
+      "body": "Harbor deployment answer 0: blue release lane.",
+      "cursor": "000000000001",
+      "curated": false,
+      "excerpt": {
+        "file": "harbor/report.md",
+        "line": 2,
+        "excerpt": "# Harbor report\nHarbor deployment uses the blue release lane.\nVerified rollback preserves durable messages.",
+        "id_match": true,
+        "artifact": "harbor__report.md"
+      }
+    },
+    "artifact": [
+      200,
+      {
+        "schema": "fm-console-artifact.v1",
+        "file": "harbor/report.md",
+        "line": 2,
+        "content": "# Harbor report\nHarbor deployment uses the blue release lane.\nVerified rollback preserves durable messages.\n",
+        "truncated": false
+      }
+    ]
+  },
+  {
+    "confined_path": "/artifact/private.md",
+    "status": 404
+  },
+  {
+    "confined_path": "/artifact/memory-archive.md",
+    "status": 404
+  },
+  {
+    "confined_path": "/artifact/../config/console-operator-secret",
+    "status": 404
+  },
+  {
+    "confined_path": "/artifact/%2e%2e%2fconfig%2fconsole-operator-secret",
+    "status": 404
+  },
+  {
+    "confined_path": "/data/harbor/report.md",
+    "status": 404
+  },
+  {
+    "curated_through": "000000000023",
+    "empty_incremental_poll_seconds": 0.049,
+    "projection_mode": "0o600",
+    "repaired_existing_0644": true
+  }
+]

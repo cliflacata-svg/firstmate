@@ -1,0 +1,4 @@
+pass: curated_relpaths, search_curated, and artifact confinement (module level)
+pass: receipt database and SQLite sidecars are private before connecting
+pass: indexed pages, targeted mutation refresh, unlocked drain and input capture
+pass: auth, CSRF, unknown readiness, request replay, replies, source-linked excerpts, the confined artifact route, the curation cursor, omissions, serialized collection

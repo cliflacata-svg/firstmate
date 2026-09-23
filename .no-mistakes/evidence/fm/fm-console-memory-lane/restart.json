@@ -1,0 +1,19 @@
+{
+  "restart_reply_count": 23,
+  "all_original_ids_preserved": true,
+  "all_replies_curated": true,
+  "last_reply": {
+    "id": "1790191897-DO3jMy",
+    "at": "2026-09-23T19:31:37Z",
+    "body": "Harbor deployment answer 22: blue release lane.",
+    "cursor": "000000000023",
+    "curated": true,
+    "excerpt": {
+      "file": "harbor/report.md",
+      "line": 2,
+      "excerpt": "# Harbor report\nHarbor deployment uses the blue release lane.\nVerified rollback preserves durable messages.",
+      "id_match": true,
+      "artifact": "harbor__report.md"
+    }
+  }
+}
