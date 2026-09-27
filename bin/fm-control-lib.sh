@@ -333,13 +333,13 @@ fm_control_backend_state_verified() {  # <backend>
 #     recorded session's server (only the server) and re-reads the pane.
 #     `dead` means it survived and is adopted; `alive` means the agent came
 #     back and refuses; a second `missing` is gone.
-#   tmux trusts the classifier's `missing`. That verdict is already positive
-#     absence: a successful session inventory that omits the window, or a
-#     definitive missing-session/server response (bin/backends/tmux.sh).
-#     Treating it as unproven recreated the reclaim deadlock: --relaunch
-#     demanded exit, and exit demanded a reconcile verb that does not exist.
-#     `unreadable` still covers a failed or non-definitive inventory and still
-#     refuses.
+#   tmux re-reads the EXACT recorded session (`=session`). A successful
+#     inventory that omits the window is gone: the session the record names is
+#     on this server and the window is not in it. A missing session or no
+#     server on this seat's socket is unproven, because a task record carries
+#     no socket identity and the window may live on another tmux server. Its
+#     reason names a remedy that is neither verb, so --relaunch and exit never
+#     send the operator to each other.
 #
 # Both control-plane callers share this one implementation so the proof cannot
 # drift into two answers for the same endpoint.
@@ -349,7 +349,34 @@ fm_control_endpoint_absence_verdict() {  # <backend> <target>
     || { printf 'unproven\tbackend %s could not be loaded to prove anything about that endpoint' "'$backend'"; return 0; }
   case "$backend" in
     tmux)
-      printf 'gone\t'
+      local session window windows inventory_status
+      session=
+      case "$target" in
+        *:*:*|'':*|*:'') ;;
+        *:*) session=${target%%:*}; window=${target#*:} ;;
+      esac
+      [ -n "$session" ] || { printf 'unproven\tthe recorded tmux endpoint %s is not a session:window address' "'$target'"; return 0; }
+      windows=$(fm_backend_tmux_window_inventory "=$session")
+      inventory_status=$?
+      case "$inventory_status" in
+        0)
+          if ! printf '%s\n' "$windows" | grep -Fqx -- "$window"; then
+            printf 'gone\t'
+            return 0
+          fi
+          case "$(fm_backend_tmux_agent_state "$target")" in
+            dead) printf 'dead\t' ;;
+            alive) printf 'alive\t' ;;
+            *) printf 'unproven\tthe recorded tmux window %s is present again but its agent state could not be classified' "'$target'" ;;
+          esac
+          ;;
+        2)
+          printf 'unproven\ttmux session %s is not on the tmux server this seat addresses, and a task record carries no socket identity, so a window on another tmux server cannot be ruled out. Rerun from a shell on the tmux server that hosts %s (check TMUX, TMUX_TMPDIR, and -L); or, once you have confirmed no agent for this task runs on any tmux server, create the empty session on this server with `tmux new-session -d -s %s` and rerun, so its inventory can prove the window gone' "'$session'" "'$session'" "$session"
+          ;;
+        *)
+          printf 'unproven\tthe window inventory of tmux session %s could not be read' "'$session'"
+          ;;
+      esac
       ;;
     herdr)
       # Start the RECORDED session's server (only the server - nothing is

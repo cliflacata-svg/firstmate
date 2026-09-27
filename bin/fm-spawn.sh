@@ -63,10 +63,10 @@
 #   its own step, because a backend's `missing` also covers an endpoint that is
 #   merely unreachable from here. Herdr must still re-read the recorded pane
 #   once that session's server is running again, because a stopped Herdr server
-#   classifies `missing` even when the pane will come back. A tmux `missing` is
-#   already positive absence (window omitted from a successful inventory, or a
-#   definitive missing-session/server response) and rebinds in the recorded
-#   session; `unreadable` still refuses. An endpoint that turns out to have
+#   classifies `missing` even when the pane will come back. tmux proves it only
+#   by a successful inventory of the recorded session that omits the window, and
+#   rebinds in that session; a missing session or server on this seat's socket
+#   says nothing about a window on another tmux server, so it refuses. An endpoint that turns out to have
 #   survived refuses too. The worktree is reused untouched either way; a
 #   rebind is a recovery, never a teardown. Only a crewmate or scout rebinds: a
 #   secondmate whose endpoint is gone is respawned by its own owner
@@ -1727,11 +1727,11 @@ if [ "$RELAUNCH" -eq 1 ]; then
   # recorded session's server and re-reading the pane: `dead` means it
   # survived and is adopted; `alive` means the agent came back and refuses;
   # only a second `missing` proves the pane itself did not survive.
-  # tmux `missing` is already positive absence - a successful session inventory
-  # that omits the window, or a definitive missing-session/server response -
-  # so the shared proof reports gone and this relaunch rebinds in the recorded
-  # session. Treating that as unproven is what deadlocked reclaim: --relaunch
-  # demanded exit, and exit demanded a reconcile verb that does not exist.
+  # tmux absence is PROVEN only by a successful inventory of the recorded
+  # session that omits the window; that relaunch rebinds in the recorded
+  # session. A missing session or dead server on this seat's socket cannot tell
+  # a destroyed window from one on another tmux server, so it refuses with a
+  # remedy that names neither verb as the other's prerequisite.
   # Every transient or self-contradicting read stays `unreadable`/`ambiguous`
   # and refuses as it always did (bin/fm-backend.sh's fm_backend_agent_state
   # owns that vocabulary). The proof itself lives in one place for the whole
@@ -3505,8 +3505,10 @@ if [ "$RELAUNCH" -eq 1 ]; then
     # worktree, armed poll and status log are untouched.
     #
     # The gate above rebinds only on a PROVEN-gone endpoint. Herdr proves that
-    # by re-reading the recorded pane once its session server is running.
-    # tmux `missing` is already that proof. Every secondmate was already
+    # by re-reading the recorded pane once its session server is running; tmux
+    # by a successful inventory of the recorded session that omits the window,
+    # so that session is already there to hold the replacement. Every
+    # secondmate was already
     # refused, so there is no secondmate dispatch left to make.
     case "$BACKEND" in
     tmux)
@@ -3516,10 +3518,6 @@ if [ "$RELAUNCH" -eq 1 ]; then
       SES=${RELAUNCH_TARGET%%:*}
       [ -n "$SES" ] || {
         echo "error: task $ID's recorded endpoint $RELAUNCH_TARGET has no tmux session to rebind into" >&2
-        exit 1
-      }
-      fm_backend_tmux_session_ensure "$SES" || {
-        echo "error: task $ID's endpoint could not be re-created in its recorded tmux session '$SES'" >&2
         exit 1
       }
       WID=$(fm_backend_tmux_create_task "$SES" "$W" "$WT") || exit 1

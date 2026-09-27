@@ -46,23 +46,26 @@
 #              the endpoint this verb normally preserves did not survive; a pane
 #              that turns out to be there and idle is the ordinary
 #              `already-stopped`; one whose agent is back takes the ordinary
-#              interrupt-then-exit path. A tmux `missing` is already positive
-#              absence and reports `endpoint-gone`, so --relaunch can rebind
-#              instead of each verb naming the other as its prerequisite.
+#              interrupt-then-exit path. A tmux window omitted from a
+#              successful inventory of the recorded session reports
+#              `endpoint-gone`, so --relaunch can rebind instead of each verb
+#              naming the other as its prerequisite. A missing session or
+#              server on this seat's socket refuses with a remedy naming
+#              neither verb: the window may be on another tmux server.
 #   relaunch   Transactionally replace the running agent with a new one, in the
 #              SAME worktree - and the same endpoint whenever that endpoint
 #              still exists - on the same or a newly chosen
 #              harness/model/effort - so switching harness is one ordinary use
 #              of this verb. When the recorded endpoint is instead proven gone -
 #              a Herdr pane or workspace destroyed in churn, or a tmux window
-#              the recovery-grade classifier reports `missing` - the launch
+#              omitted from its recorded session's inventory - the launch
 #              owner re-creates one in that worktree, in the session the record
 #              names, and the task's record rebinds to it; that is how a task
 #              whose terminal was destroyed is reclaimed by the home that owns
 #              it, rather than being stranded with a parked approval nobody can
 #              answer. Herdr still rechecks a stopped server so a preserved pane
-#              is adopted rather than duplicated. A tmux `missing` rebinds
-#              because that classifier verdict is already positive absence.
+#              is adopted rather than duplicated. A tmux window rebinds only
+#              when its recorded session is readable here and omits it.
 #              An explicit `default` model or effort clears that
 #              axis for the replacement. With no explicit axis, a secondmate
 #              re-resolves its durable config/secondmate-harness pin (harness
