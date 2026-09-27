@@ -371,6 +371,7 @@ fm_control_endpoint_absence_verdict() {  # <backend> <target>
           esac
           ;;
         2)
+          # shellcheck disable=SC2016 # Backticks are literal command text in the operator message.
           printf 'unproven\ttmux session %s is not on the tmux server this seat addresses, and a task record carries no socket identity, so a window on another tmux server cannot be ruled out. Rerun from a shell on the tmux server that hosts %s (check TMUX, TMUX_TMPDIR, and -L); or, once you have confirmed no agent for this task runs on any tmux server, create the empty session on this server with `tmux new-session -d -s %s` and rerun, so its inventory can prove the window gone' "'$session'" "'$session'" "$session"
           ;;
         *)
