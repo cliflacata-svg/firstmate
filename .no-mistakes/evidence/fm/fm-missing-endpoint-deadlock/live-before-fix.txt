@@ -1,0 +1,80 @@
+=== [before-fix-base-f93f0d3] bin=/tmp/fm-base.YmRsFq  tmux=tmux 3.6
+
+$ tmux list-windows -t =fmlab   # recorded window fm-lv1 destroyed
+keeper
+
+---- S3 adversarial: seat on a DIFFERENT tmux server (other TMUX_TMPDIR, no server there)
+
+$ fm-control.sh lv1 exit
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.itrFbs
+error: task lv1's endpoint fmlab:fm-lv1 reads 'missing', but tmux absence cannot be proven from a task record: the record does not carry the endpoint's socket identity, and a server-wide window inventory only describes the tmux server this process addresses, so a window absent from it may still be alive on another; exit will not claim an agent stopped at an address it cannot trust, nor send lifecycle input to one
+rc=1
+
+$ fm-spawn.sh lv1 --relaunch --harness claude
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.itrFbs
+error: task lv1's recorded endpoint fmlab:fm-lv1 reads 'missing', but tmux absence cannot be proven from a task record: the record does not carry the endpoint's socket identity, and a server-wide window inventory only describes the tmux server this process addresses, so a window absent from it may still be alive on another. An endpoint that cannot be proven absent may still hold a live agent on this task's worktree; refusing rather than launching a second agent into it
+rc=1
+
+$ other server sessions (must be none):
+error connecting to /tmp/fm-lab.itrFbs/other-tmux/tmux-1000/default (No such file or directory)
+
+---- S3b adversarial: recorded session renamed away on this seat's server (can't find session)
+
+$ fm-spawn.sh lv1 --relaunch --harness claude
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.itrFbs
+error: task lv1's recorded endpoint fmlab:fm-lv1 reads 'missing', but tmux absence cannot be proven from a task record: the record does not carry the endpoint's socket identity, and a server-wide window inventory only describes the tmux server this process addresses, so a window absent from it may still be alive on another. An endpoint that cannot be proven absent may still hold a live agent on this task's worktree; refusing rather than launching a second agent into it
+rc=1
+
+$ fm-control.sh lv1 exit
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.itrFbs
+error: task lv1's endpoint fmlab:fm-lv1 reads 'missing', but tmux absence cannot be proven from a task record: the record does not carry the endpoint's socket identity, and a server-wide window inventory only describes the tmux server this process addresses, so a window absent from it may still be alive on another; exit will not claim an agent stopped at an address it cannot trust, nor send lifecycle input to one
+rc=1
+
+$ sessions/windows after refusal:
+fmlab-renamed:keeper
+
+---- S1: exit on a window omitted from the recorded session's inventory
+
+$ fm-control.sh lv1 exit
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.itrFbs
+error: task lv1's endpoint fmlab:fm-lv1 reads 'missing', but tmux absence cannot be proven from a task record: the record does not carry the endpoint's socket identity, and a server-wide window inventory only describes the tmux server this process addresses, so a window absent from it may still be alive on another; exit will not claim an agent stopped at an address it cannot trust, nor send lifecycle input to one
+rc=1
+
+$ grep window= state/lv1.meta
+window=fmlab:fm-lv1
+
+---- S2: --relaunch reclaims into the recorded session with a real claude
+
+$ fm-spawn.sh lv1 --relaunch --harness claude
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.itrFbs
+error: task lv1's recorded endpoint fmlab:fm-lv1 reads 'missing', but tmux absence cannot be proven from a task record: the record does not carry the endpoint's socket identity, and a server-wide window inventory only describes the tmux server this process addresses, so a window absent from it may still be alive on another. An endpoint that cannot be proven absent may still hold a live agent on this task's worktree; refusing rather than launching a second agent into it
+rc=1
+
+$ tmux list-windows -a (after)
+fmlab:keeper @0 cmd=bash cwd=/tmp/fm-lab.itrFbs
+
+$ grep window= state/lv1.meta
+window=fmlab:fm-lv1
+worktree=/tmp/fm-lab.itrFbs/wt
+harness=claude
+
+$ worktree HEAD unchanged / dirty file kept
+HEAD unchanged
+never committed
+
+$ capture-pane fmlab:fm-lv1
+can't find window: fm-lv1
+
+---- S4 adversarial: the reclaimed endpoint now holds a live agent -> relaunch refuses
+
+$ tmux pane command
+bash
+
+$ fm-spawn.sh lv1 --relaunch --harness claude
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.itrFbs
+error: task lv1's recorded endpoint fmlab:fm-lv1 reads 'missing', but tmux absence cannot be proven from a task record: the record does not carry the endpoint's socket identity, and a server-wide window inventory only describes the tmux server this process addresses, so a window absent from it may still be alive on another. An endpoint that cannot be proven absent may still hold a live agent on this task's worktree; refusing rather than launching a second agent into it
+rc=1
+
+$ window count for fm-lv1 (must be 1)
+0
+=== [before-fix-base-f93f0d3] done; tearing down lab

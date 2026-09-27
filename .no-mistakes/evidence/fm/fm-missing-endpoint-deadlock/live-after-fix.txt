@@ -1,0 +1,116 @@
+=== [after-fix] bin=/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3J6CKQ7ESYQGJVW8RTH25WB  tmux=tmux 3.6
+
+$ tmux list-windows -t =fmlab   # recorded window fm-lv1 destroyed
+keeper
+
+---- S3 adversarial: seat on a DIFFERENT tmux server (other TMUX_TMPDIR, no server there)
+
+$ fm-control.sh lv1 exit
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.0BEEcN
+error: task lv1's endpoint fmlab:fm-lv1 reads 'missing', but tmux session 'fmlab' is not on the tmux server this seat addresses, and a task record carries no socket identity, so a window on another tmux server cannot be ruled out. Rerun from a shell on the tmux server that hosts 'fmlab' (check TMUX, TMUX_TMPDIR, and -L); or, once you have confirmed no agent for this task runs on any tmux server, create the empty session on this server with `tmux new-session -d -s fmlab` and rerun, so its inventory can prove the window gone; exit will not claim an agent stopped at an address it cannot trust, nor send lifecycle input to one
+rc=1
+
+$ fm-spawn.sh lv1 --relaunch --harness claude
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.0BEEcN
+error: task lv1's recorded endpoint fmlab:fm-lv1 reads 'missing', but tmux session 'fmlab' is not on the tmux server this seat addresses, and a task record carries no socket identity, so a window on another tmux server cannot be ruled out. Rerun from a shell on the tmux server that hosts 'fmlab' (check TMUX, TMUX_TMPDIR, and -L); or, once you have confirmed no agent for this task runs on any tmux server, create the empty session on this server with `tmux new-session -d -s fmlab` and rerun, so its inventory can prove the window gone. An endpoint that cannot be proven absent may still hold a live agent on this task's worktree; refusing rather than launching a second agent into it
+rc=1
+
+$ other server sessions (must be none):
+error connecting to /tmp/fm-lab.0BEEcN/other-tmux/tmux-1000/default (No such file or directory)
+
+---- S3b adversarial: recorded session renamed away on this seat's server (can't find session)
+
+$ fm-spawn.sh lv1 --relaunch --harness claude
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.0BEEcN
+error: task lv1's recorded endpoint fmlab:fm-lv1 reads 'missing', but tmux session 'fmlab' is not on the tmux server this seat addresses, and a task record carries no socket identity, so a window on another tmux server cannot be ruled out. Rerun from a shell on the tmux server that hosts 'fmlab' (check TMUX, TMUX_TMPDIR, and -L); or, once you have confirmed no agent for this task runs on any tmux server, create the empty session on this server with `tmux new-session -d -s fmlab` and rerun, so its inventory can prove the window gone. An endpoint that cannot be proven absent may still hold a live agent on this task's worktree; refusing rather than launching a second agent into it
+rc=1
+
+$ fm-control.sh lv1 exit
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.0BEEcN
+error: task lv1's endpoint fmlab:fm-lv1 reads 'missing', but tmux session 'fmlab' is not on the tmux server this seat addresses, and a task record carries no socket identity, so a window on another tmux server cannot be ruled out. Rerun from a shell on the tmux server that hosts 'fmlab' (check TMUX, TMUX_TMPDIR, and -L); or, once you have confirmed no agent for this task runs on any tmux server, create the empty session on this server with `tmux new-session -d -s fmlab` and rerun, so its inventory can prove the window gone; exit will not claim an agent stopped at an address it cannot trust, nor send lifecycle input to one
+rc=1
+
+$ sessions/windows after refusal:
+fmlab-renamed:keeper
+
+---- S1: exit on a window omitted from the recorded session's inventory
+
+$ fm-control.sh lv1 exit
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.0BEEcN
+endpoint-gone lv1 harness=claude backend=tmux endpoint=fmlab:fm-lv1 worktree=/tmp/fm-lab.0BEEcN/wt
+rc=0
+
+$ grep window= state/lv1.meta
+window=fmlab:fm-lv1
+
+---- S2: --relaunch reclaims into the recorded session with a real claude
+
+$ fm-spawn.sh lv1 --relaunch --harness claude
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.0BEEcN
+warning: /tmp/fm-lab.0BEEcN/data/lv1/launch-brief.md records no ship branch; defaulting to legacy branch fm/lv1
+warning: /tmp/fm-lab.0BEEcN/data/lv1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+spawned lv1 harness=claude kind=ship mode=no-mistakes yolo=off window=fmlab:fm-lv1 worktree=/tmp/fm-lab.0BEEcN/wt
+rc=0
+
+$ tmux list-windows -a (after)
+fmlab:keeper @0 cmd=bash cwd=/tmp/fm-lab.0BEEcN
+fmlab:fm-lv1 @2 cmd=claude cwd=/tmp/fm-lab.0BEEcN/wt
+
+$ grep window= state/lv1.meta
+window=fmlab:fm-lv1
+worktree=/tmp/fm-lab.0BEEcN/wt
+harness=claude
+
+$ worktree HEAD unchanged / dirty file kept
+HEAD unchanged
+never committed
+
+$ capture-pane fmlab:fm-lv1
+430892d77b8da210d02df0eb33e78ef237cee0/launch.s1790539343.1680491.17385.sh'
+Welcome to Claude Code v2.1.283
+ Let's get started.
+ Choose the text style that looks best with your terminal
+ To change this later, run /theme
+   1. Auto (match terminal)
+ ❯ 2. Dark mode ✔
+   3. Light mode
+   4. Dark mode (colorblind-friendly)
+   5. Light mode (colorblind-friendly)
+   6. Dark mode (ANSI colors only)
+   7. Light mode (ANSI colors only)
+ ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+  1  function greet() {
+  2 -  console.log("Hello, World!");
+  2 +  console.log("Hello, Claude!");
+  3  }
+ ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+  Syntax theme: Monokai Extended (ctrl+t to disable)
+
+---- S4 adversarial: the reclaimed endpoint now holds a live agent -> relaunch refuses
+
+$ tmux pane command
+claude
+
+$ fm-spawn.sh lv1 --relaunch --harness claude
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.0BEEcN
+error: task lv1's endpoint reads 'alive'; a relaunch requires a positively agent-free endpoint (stop the agent first with bin/fm-control.sh lv1 exit)
+rc=1
+
+$ window count for fm-lv1 (must be 1)
+1
+=== [after-fix] done; tearing down lab
+rm: cannot remove '/tmp/fm-lab.0BEEcN/state/lv1.git-hooks/sendemail-validate': Permission denied
+rm: cannot remove '/tmp/fm-lab.0BEEcN/state/lv1.git-hooks/pre-auto-gc': Permission denied
+rm: cannot remove '/tmp/fm-lab.0BEEcN/state/lv1.git-hooks/post-rewrite': Permission denied
+rm: cannot remove '/tmp/fm-lab.0BEEcN/state/lv1.git-hooks/pre-push': Permission denied
+rm: cannot remove '/tmp/fm-lab.0BEEcN/state/lv1.git-hooks/post-merge': Permission denied
+rm: cannot remove '/tmp/fm-lab.0BEEcN/state/lv1.git-hooks/post-checkout': Permission denied
+rm: cannot remove '/tmp/fm-lab.0BEEcN/state/lv1.git-hooks/pre-rebase': Permission denied
+rm: cannot remove '/tmp/fm-lab.0BEEcN/state/lv1.git-hooks/post-commit': Permission denied
+rm: cannot remove '/tmp/fm-lab.0BEEcN/state/lv1.git-hooks/prepare-commit-msg': Permission denied
+rm: cannot remove '/tmp/fm-lab.0BEEcN/state/lv1.git-hooks/pre-merge-commit': Permission denied
+rm: cannot remove '/tmp/fm-lab.0BEEcN/state/lv1.git-hooks/pre-commit': Permission denied
+rm: cannot remove '/tmp/fm-lab.0BEEcN/state/lv1.git-hooks/post-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-lab.0BEEcN/state/lv1.git-hooks/pre-applypatch': Permission denied
+rm: cannot remove '/tmp/fm-lab.0BEEcN/state/lv1.git-hooks/applypatch-msg': Permission denied
+rm: cannot remove '/tmp/fm-lab.0BEEcN/state/lv1.git-hooks/commit-msg': Permission denied
