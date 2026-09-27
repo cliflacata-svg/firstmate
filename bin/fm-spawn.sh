@@ -66,9 +66,9 @@
 #   classifies `missing` even when the pane will come back. tmux proves it only
 #   by a successful inventory of the recorded session that omits the window, and
 #   rebinds in that session; a missing session or server on this seat's socket
-#   says nothing about a window on another tmux server, so it refuses. An endpoint that turns out to have
-#   survived refuses too. The worktree is reused untouched either way; a
-#   rebind is a recovery, never a teardown. Only a crewmate or scout rebinds: a
+#   says nothing about a window on another tmux server, so it refuses. An
+#   endpoint that turns out to have survived refuses too. The worktree is
+#   reused untouched either way; a rebind is a recovery, never a teardown. Only a crewmate or scout rebinds: a
 #   secondmate whose endpoint is gone is respawned by its own owner
 #   (`--secondmate`, driven by the session-start liveness sweep).
 #   Every fresh ship/scout launch and replacement explicitly enters the recorded
@@ -3508,8 +3508,8 @@ if [ "$RELAUNCH" -eq 1 ]; then
     # by re-reading the recorded pane once its session server is running; tmux
     # by a successful inventory of the recorded session that omits the window,
     # so that session is already there to hold the replacement. Every
-    # secondmate was already
-    # refused, so there is no secondmate dispatch left to make.
+    # secondmate was already refused, so there is no secondmate dispatch left
+    # to make.
     case "$BACKEND" in
     tmux)
       # Re-create the window under the RECORDED tmux session. container_ensure
