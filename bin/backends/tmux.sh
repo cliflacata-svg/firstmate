@@ -79,6 +79,17 @@ fm_backend_tmux_container_ensure() {
   fi
 }
 
+# fm_backend_tmux_session_ensure: make <session> addressable on the tmux server
+# this process talks to, creating it detached when has-session cannot see it.
+# Reclaim uses this so a gone window can be replaced in the recorded session
+# name rather than whatever session this seat happens to sit in.
+fm_backend_tmux_session_ensure() {  # <session>
+  local ses=$1
+  [ -n "$ses" ] || return 1
+  tmux has-session -t "$ses" 2>/dev/null && return 0
+  tmux new-session -d -s "$ses"
+}
+
 # fm_backend_tmux_create_task: create the task's window in <proj-abs>,
 # refusing an existing <window-name> in <session>. Mirrors fm-spawn.sh's
 # duplicate-check-then-new-window sequence, including the exact error text

@@ -325,19 +325,21 @@ fm_control_backend_state_verified() {  # <backend>
 # re-creating the endpoint - must come through here rather than trusting the
 # raw verdict.
 #
-# Whether absence is provable AT ALL is a property of the backend, not of the
-# reading:
-#   herdr CAN prove it. Every read goes through fm_backend_herdr_cli, which
-#     passes `--session <session>`, so the recheck starts and reads the session
-#     the RECORD names, through that session's own socket. The answer is about
-#     the task's endpoint and nothing else.
-#   tmux CANNOT. `list-windows -a` describes only the server the CURRENT
-#     process addresses (its TMUX_TMPDIR/socket), and a task's record does not
-#     carry the endpoint's socket identity - so a different but running server
-#     would answer "not anywhere" about a window it was never able to see.
-#     There is no read available here that closes that gap, so tmux always
-#     returns `unproven` and both verbs refuse. tmux is left exactly as
-#     deadlocked as it was before this change - no worse - but deliberately.
+# Whether a `missing` read needs a second proof is a property of the backend:
+#   herdr MUST recheck. fm_backend_herdr_agent_state maps a positively STOPPED
+#     session server to `missing` (issue #4091), which is "no agent is running
+#     right now" rather than "the pane was destroyed". Stopping and restarting
+#     a named Herdr server preserves pane ids, so this function starts the
+#     recorded session's server (only the server) and re-reads the pane.
+#     `dead` means it survived and is adopted; `alive` means the agent came
+#     back and refuses; a second `missing` is gone.
+#   tmux trusts the classifier's `missing`. That verdict is already positive
+#     absence: a successful session inventory that omits the window, or a
+#     definitive missing-session/server response (bin/backends/tmux.sh).
+#     Treating it as unproven recreated the reclaim deadlock: --relaunch
+#     demanded exit, and exit demanded a reconcile verb that does not exist.
+#     `unreadable` still covers a failed or non-definitive inventory and still
+#     refuses.
 #
 # Both control-plane callers share this one implementation so the proof cannot
 # drift into two answers for the same endpoint.
@@ -347,7 +349,7 @@ fm_control_endpoint_absence_verdict() {  # <backend> <target>
     || { printf 'unproven\tbackend %s could not be loaded to prove anything about that endpoint' "'$backend'"; return 0; }
   case "$backend" in
     tmux)
-      printf 'unproven\ttmux absence cannot be proven from a task record: the record does not carry the endpoint'"'"'s socket identity, and a server-wide window inventory only describes the tmux server this process addresses, so a window absent from it may still be alive on another'
+      printf 'gone\t'
       ;;
     herdr)
       # Start the RECORDED session's server (only the server - nothing is
