@@ -1,0 +1,16 @@
+=== step 1: relaunch with recorded session absent on this server
+error: task lx6's recorded endpoint fmlab:fm-lx6 reads 'missing', but tmux session 'fmlab' is not on the tmux server this seat addresses, and a task record carries no socket identity, so a window on another tmux server cannot be ruled out. Rerun from a shell on the tmux server that hosts 'fmlab' (check TMUX, TMUX_TMPDIR, and -L); or, once you have confirmed no agent for this task runs on any tmux server, create the empty session on this server with `tmux new-session -d -s fmlab` and rerun, so its inventory can prove the window gone. An endpoint that cannot be proven absent may still hold a live agent on this task's worktree; refusing rather than launching a second agent into it
+[rc=1]
+=== step 2: operator follows the printed remedy: tmux new-session -d -s fmlab
+=== step 3: fm-control.sh exit
+endpoint-gone lx6 harness=claude backend=tmux endpoint=fmlab:fm-lx6 worktree=/tmp/fm-lab.l1H2wk/wt-lx6
+=== step 4: relaunch again
+warning: /tmp/fm-lab.l1H2wk/data/lx6/launch-brief.md records no ship branch; defaulting to legacy branch fm/lx6
+warning: /tmp/fm-lab.l1H2wk/data/lx6/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+spawned lx6 harness=claude kind=ship mode=no-mistakes yolo=off window=fmlab:fm-lx6 worktree=/tmp/fm-lab.l1H2wk/wt-lx6
+[rc=0]
+fmlab:bash bash /home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3KYS8AYD4DDWPX7BRDVZVVT
+fmlab:fm-lx6 claude /tmp/fm-lab.l1H2wk/wt-lx6
+keep:sleep sleep /home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3KYS8AYD4DDWPX7BRDVZVVT
+window=fmlab:fm-lx6
+lab removed

@@ -1,0 +1,107 @@
+Author identity unknown
+
+*** Please tell me who you are.
+
+Run
+
+  git config --global user.email "you@example.com"
+  git config --global user.name "Your Name"
+
+to set your account's default identity.
+Omit --global to set the identity only in this repository.
+
+fatal: empty ident name (for <clif@Clifton-PC.localdomain>) not allowed
+
+=== S1 window destroyed inside live recorded session (real tmux)
+tmux inventory before:
+fmlab:keeper tmux /home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3KYS8AYD4DDWPX7BRDVZVVT
+other:x tmux /home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3KYS8AYD4DDWPX7BRDVZVVT
+window=fmlab:fm-lx1
+
+=== S1a fm-control.sh lx1 exit
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.kmEwwz
+endpoint-gone lx1 harness=claude backend=tmux endpoint=fmlab:fm-lx1 worktree=/tmp/fm-lab.kmEwwz/wt-lx1
+[rc=0]
+
+=== S1b fm-spawn.sh lx1 --relaunch --harness claude
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.kmEwwz
+warning: /tmp/fm-lab.kmEwwz/data/lx1/launch-brief.md records no ship branch; defaulting to legacy branch fm/lx1
+warning: /tmp/fm-lab.kmEwwz/data/lx1/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+spawned lx1 harness=claude kind=ship mode=no-mistakes yolo=off window=fmlab:fm-lx1 worktree=/tmp/fm-lab.kmEwwz/wt-lx1
+[rc=0]
+tmux inventory after:
+fmlab:keeper sleep /tmp/fm-lab.kmEwwz
+fmlab:fm-lx1 claude /tmp/fm-lab.kmEwwz/wt-lx1
+other:x sleep /home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3KYS8AYD4DDWPX7BRDVZVVT
+window=fmlab:fm-lx1
+sessions:
+fmlab
+other
+
+=== S2 recorded session missing on this seat's server (adversarial)
+
+=== S2a relaunch
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.kmEwwz
+error: task lx2's recorded endpoint gonesess:fm-lx2 reads 'missing', but tmux session 'gonesess' is not on the tmux server this seat addresses, and a task record carries no socket identity, so a window on another tmux server cannot be ruled out. Rerun from a shell on the tmux server that hosts 'gonesess' (check TMUX, TMUX_TMPDIR, and -L); or, once you have confirmed no agent for this task runs on any tmux server, create the empty session on this server with `tmux new-session -d -s gonesess` and rerun, so its inventory can prove the window gone. An endpoint that cannot be proven absent may still hold a live agent on this task's worktree; refusing rather than launching a second agent into it
+[rc=1]
+
+=== S2b exit
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.kmEwwz
+error: task lx2's endpoint gonesess:fm-lx2 reads 'missing', but tmux session 'gonesess' is not on the tmux server this seat addresses, and a task record carries no socket identity, so a window on another tmux server cannot be ruled out. Rerun from a shell on the tmux server that hosts 'gonesess' (check TMUX, TMUX_TMPDIR, and -L); or, once you have confirmed no agent for this task runs on any tmux server, create the empty session on this server with `tmux new-session -d -s gonesess` and rerun, so its inventory can prove the window gone; exit will not claim an agent stopped at an address it cannot trust, nor send lifecycle input to one
+[rc=1]
+sessions after:
+fmlab
+other
+window=gonesess:fm-lx2
+
+=== S3 agent alive on ANOTHER tmux server; seat addresses a server without that session (adversarial cross-socket)
+other-server inventory:
+remote:fm-lx3
+
+=== S3a relaunch from this seat
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.kmEwwz
+error: task lx3's recorded endpoint remote:fm-lx3 reads 'missing', but tmux session 'remote' is not on the tmux server this seat addresses, and a task record carries no socket identity, so a window on another tmux server cannot be ruled out. Rerun from a shell on the tmux server that hosts 'remote' (check TMUX, TMUX_TMPDIR, and -L); or, once you have confirmed no agent for this task runs on any tmux server, create the empty session on this server with `tmux new-session -d -s remote` and rerun, so its inventory can prove the window gone. An endpoint that cannot be proven absent may still hold a live agent on this task's worktree; refusing rather than launching a second agent into it
+[rc=1]
+
+=== S3b exit from this seat
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.kmEwwz
+error: task lx3's endpoint remote:fm-lx3 reads 'missing', but tmux session 'remote' is not on the tmux server this seat addresses, and a task record carries no socket identity, so a window on another tmux server cannot be ruled out. Rerun from a shell on the tmux server that hosts 'remote' (check TMUX, TMUX_TMPDIR, and -L); or, once you have confirmed no agent for this task runs on any tmux server, create the empty session on this server with `tmux new-session -d -s remote` and rerun, so its inventory can prove the window gone; exit will not claim an agent stopped at an address it cannot trust, nor send lifecycle input to one
+[rc=1]
+this-server sessions:
+fmlab
+other
+other-server windows still:
+remote:fm-lx3
+
+=== S4 live agent in the recorded window (duplicate-agent guard)
+claude
+
+=== S4a relaunch
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.kmEwwz
+error: task lx4's endpoint reads 'alive'; a relaunch requires a positively agent-free endpoint (stop the agent first with bin/fm-control.sh lx4 exit)
+[rc=1]
+keeper sleep
+fm-lx1 claude
+fm-lx4 claude
+
+=== S5 no tmux server at all on this seat's socket (adversarial)
+
+=== S5a relaunch
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.kmEwwz
+error: task lx5's recorded endpoint fmlab:fm-lx5 reads 'missing', but tmux session 'fmlab' is not on the tmux server this seat addresses, and a task record carries no socket identity, so a window on another tmux server cannot be ruled out. Rerun from a shell on the tmux server that hosts 'fmlab' (check TMUX, TMUX_TMPDIR, and -L); or, once you have confirmed no agent for this task runs on any tmux server, create the empty session on this server with `tmux new-session -d -s fmlab` and rerun, so its inventory can prove the window gone. An endpoint that cannot be proven absent may still hold a live agent on this task's worktree; refusing rather than launching a second agent into it
+[rc=1]
+
+=== S5b exit
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.kmEwwz
+error: task lx5's endpoint fmlab:fm-lx5 reads 'missing', but tmux session 'fmlab' is not on the tmux server this seat addresses, and a task record carries no socket identity, so a window on another tmux server cannot be ruled out. Rerun from a shell on the tmux server that hosts 'fmlab' (check TMUX, TMUX_TMPDIR, and -L); or, once you have confirmed no agent for this task runs on any tmux server, create the empty session on this server with `tmux new-session -d -s fmlab` and rerun, so its inventory can prove the window gone; exit will not claim an agent stopped at an address it cannot trust, nor send lifecycle input to one
+[rc=1]
+no server running on /tmp/fm-lab.kmEwwz/tmux/tmux-1000/default
+
+=== teardown
+/tmp/fm-lab.kmEwwz/projects/proj 0000000 [main]
+/tmp/fm-lab.kmEwwz/wt-lx1        0000000 [task-lx1]
+/tmp/fm-lab.kmEwwz/wt-lx2        0000000 [task-lx2]
+/tmp/fm-lab.kmEwwz/wt-lx3        0000000 [task-lx3]
+/tmp/fm-lab.kmEwwz/wt-lx4        0000000 [task-lx4]
+/tmp/fm-lab.kmEwwz/wt-lx5        0000000 [task-lx5]
+lab removed: yes
