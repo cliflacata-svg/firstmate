@@ -1,0 +1,5 @@
+spawned smoke-pi-switch-1487010 harness=pi kind=scout window=firstmate:fm-smoke-pi-switch-1487010 worktree=/home/clif/.treehouse/smoke-db6bbc/1/smoke
+switched-model smoke-pi-switch-1487010 harness=pi from=zai/glm-5.3:low model=zai/glm-5.3 effort=high provider=zai session=01a0ea27-3af5-702b-aab8-20968941eebd backend=tmux endpoint=firstmate:fm-smoke-pi-switch-1487010 worktree=/home/clif/.treehouse/smoke-db6bbc/1/smoke
+switched-model smoke-pi-switch-1487010 harness=pi from=zai/glm-5.3:high model=xai/grok-4.5 effort=low provider=xai session=01a0ea27-3af5-702b-aab8-20968941eebd backend=tmux endpoint=firstmate:fm-smoke-pi-switch-1487010 worktree=/home/clif/.treehouse/smoke-db6bbc/1/smoke
+ok - Pi live switch kept task smoke-pi-switch-1487010 session 01a0ea27-3af5-702b-aab8-20968941eebd worktree /home/clif/.treehouse/smoke-db6bbc/1/smoke edit and codeword PINECONE-1790634830; model zai/glm-5.3 -> xai/grok-4.5
+rc=0

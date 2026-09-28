@@ -1,0 +1,12 @@
+ok - switch-model is a listed control verb
+ok - switch-model refuses a non-Pi harness
+ok - switch-model refuses a secondmate
+ok - switch-model refuses an unsupported model before publishing
+ok - switch-model defers a busy worker instead of interrupting
+ok - same-provider switch confirms runtime readback and keeps the dispatch snapshot
+ok - cross-provider switch updates runtime metadata and preserves dispatch_*
+ok - a failed switch without a new readback keeps the recorded model
+ok - partial success reconciles metadata to the runtime model
+ok - recovery reads the last confirmed profile beside the original dispatch snapshot
+ok - switch-model refuses when the Pi session handshake is missing
+ok - switch-model refuses --harness rather than changing runtime

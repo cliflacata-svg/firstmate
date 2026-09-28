@@ -1,0 +1,59 @@
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.KEBmWY
+spawned manual-pi-switch-1388905 harness=pi kind=scout window=firstmate:fm-manual-pi-switch-1388905 worktree=/home/clif/.treehouse/smoke-825586/1/smoke
+--- status after spawn
+working [at=1790634402]: ready
+codeword not on disk (conversation-only)
+--- meta before
+model=zai/glm-5.3
+effort=medium
+dispatch_model=zai/glm-5.3
+dispatch_effort=medium
+--- pane footer before
+── ⠹ Working ───────────────────────────────────────────────────────────────────
+────────────────────────────────────────────────────────────────────────────────
+~/.treehouse/smoke-825586/1/smoke (detached)
+↑1.0k ↓413 R3.4k CH83.9% $0.004 0.3%/1.0M (auto)            (zai) glm-5.3 • high
+=== BUSY DEFERRAL: start a long turn then switch with short idle wait
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.KEBmWY
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the requested message WILL still be sent.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.KEBmWY
+error: task manual-pi-switch-1388905 is not at a verified idle checkpoint (busy=busy pi-ext); live model switch will not interrupt an active tool operation
+busy switch rc=1
+--- meta after busy attempt
+model=zai/glm-5.3
+effort=medium
+=== CROSS-PROVIDER to Luna at idle
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.KEBmWY
+switched-model manual-pi-switch-1388905 harness=pi from=zai/glm-5.3:medium model=openai-codex/gpt-5.6-luna effort=low provider=openai-codex session=01a0ea20-8f8c-7471-afee-bdf6217684b0 backend=tmux endpoint=firstmate:fm-manual-pi-switch-1388905 worktree=/home/clif/.treehouse/smoke-825586/1/smoke
+switch rc=0
+--- meta after
+dispatch_model=zai/glm-5.3
+dispatch_effort=medium
+model=openai-codex/gpt-5.6-luna
+effort=low
+account_provider=openai-codex
+--- endpoint before=firstmate:fm-manual-pi-switch-1388905 after=firstmate:fm-manual-pi-switch-1388905
+--- pane footer after
+────────────────────────────────────────────────────────────────────────────────
+────────────────────────────────────────────────────────────────────────────────
+~/.treehouse/smoke-825586/1/smoke (detached)
+↑2.8k ↓1.1k R22k CH90.2% $0.014 (sub) 1.5%/272k (auto)        gpt-5.6-luna • low
+=== RECALL from conversation memory
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.KEBmWY
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+--- status
+working [at=1790634402]: ready
+working [at=1790634465]: slept
+working [at=1790634485]: recall MARMALADE-2878-OTTER
+RECALL OK: MARMALADE-2878-OTTER
+--- switch log
+ts=1790634471 req=1790634471.1397710.6849 from=zai/glm-5.3:medium to=openai-codex/gpt-5.6-luna:low status=applied session=01a0ea20-8f8c-7471-afee-bdf6217684b0 dest_context=272K
+--- ack
+{"schema":"fm-pi-switch-model.v1","id":"1790634471.1397710.6849","session_id":"01a0ea20-8f8c-7471-afee-bdf6217684b0","status":"applied","model":"openai-codex/gpt-5.6-luna","effort":"low","tokens":4115,"context":272000}
+

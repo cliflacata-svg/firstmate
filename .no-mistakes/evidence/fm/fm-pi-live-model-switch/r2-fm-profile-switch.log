@@ -1,0 +1,14 @@
+ok - complexity escalates inside Pi as a live switch
+ok - absent Jev key falls back without a network call
+ok - Jev may keep the current profile at a complexity checkpoint
+ok - Jev may escalate at a phase checkpoint
+ok - Jev cannot choose a decision the checkpoint does not allow
+ok - low-confidence Jev answers fall back to the checkpoint mapping
+ok - never-send evidence is not sent to Jev
+ok - quota moves across Pi providers as a live switch
+ok - phase without --routine holds
+ok - routine phase reduces inside Pi
+ok - xai SuperGrok on Pi is a live switch, not a native Grok relaunch
+ok - a non-Pi destination is relaunch, not a live switch
+ok - cooldown prevents oscillation
+ok - retry bound prevents oscillation

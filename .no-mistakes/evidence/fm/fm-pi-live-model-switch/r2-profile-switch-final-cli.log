@@ -1,0 +1,21 @@
+### rules=/home/clif/Apps/firstmate/data/fm-pi-live-model-switch/crew-dispatch.final.json (validated final config, not yet installed)
+{"when":"A narrow, fully specified mechanical change with n","use":["pi:zai/glm-5.3:low:zai","pi:openai-codex/gpt-5.6-luna:low:codex","pi:xai/grok-4.5:low:grok"]}
+{"when":"A verification-only task with explicit commands, e","use":["pi:zai/glm-5.3:medium:zai","pi:openai-codex/gpt-5.6-luna:medium:codex","pi:xai/grok-4.5:medium:grok"]}
+{"when":"Implementation with clear requirements and accepta","use":["pi:zai/glm-5.3:medium:zai","pi:openai-codex/gpt-5.6-terra:medium:codex","pi:xai/grok-4.5:medium:grok"]}
+{"when":"Investigation with an unclear root cause, a cross-","use":["pi:openai-codex/gpt-5.6-sol:xhigh:codex","pi:xai/grok-4.6:xhigh:grok","grok:grok-4.6:high:-","claude:sonnet:xhigh:-"]}
+{"default":["pi:zai/glm-5.3:medium:zai","pi:openai-codex/gpt-5.6-terra:medium:codex","pi:xai/grok-4.5:medium:grok"]}
+$ fm-profile-switch.sh --checkpoint quota --current pi:openai-codex/gpt-5.6-sol:xhigh:openai-codex
+action=live-switch jev=off reason=checkpoint quota decision move-provider harness=pi model=xai/grok-4.6 effort=xhigh provider=grok 
+$ fm-profile-switch.sh --checkpoint quota --current pi:zai/glm-5.3:medium:zai
+action=live-switch jev=off reason=checkpoint quota decision move-provider harness=pi model=openai-codex/gpt-5.6-luna effort=medium provider=codex 
+$ fm-profile-switch.sh --checkpoint quota --current pi:openai-codex/gpt-5.6-terra:medium:openai-codex
+action=live-switch jev=off reason=checkpoint quota decision move-provider harness=pi model=zai/glm-5.3 effort=medium provider=zai 
+$ fm-profile-switch.sh --checkpoint complexity --current pi:zai/glm-5.3:medium:zai
+action=live-switch jev=off reason=checkpoint complexity decision escalate harness=pi model=openai-codex/gpt-5.6-sol effort=xhigh provider=codex 
+$ fm-profile-switch.sh --checkpoint phase --routine --current pi:openai-codex/gpt-5.6-terra:medium:openai-codex
+action=live-switch jev=off reason=checkpoint phase decision reduce harness=pi model=zai/glm-5.3 effort=low provider=zai 
+### cooldown/retry bound (history with a switch 10s ago)
+action=hold jev=off reason=cooldown 590s remaining 
+### bogus checkpoint
+error: --checkpoint must be complexity, stall, phase, or quota
+rc=2

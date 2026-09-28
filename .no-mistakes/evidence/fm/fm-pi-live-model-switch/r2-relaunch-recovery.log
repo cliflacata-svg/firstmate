@@ -1,0 +1,31 @@
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.7t9192
+spawned relaunch-pi-switch-1505491 harness=pi kind=scout window=firstmate:fm-relaunch-pi-switch-1505491 worktree=/home/clif/.treehouse/smoke-0a609f/1/smoke
+=== switch zai -> xai/grok-4.5 low
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.7t9192
+switched-model relaunch-pi-switch-1505491 harness=pi from=zai/glm-5.3:low model=xai/grok-4.5 effort=low provider=xai session=01a0ea29-ea92-758c-a8f3-1909444765fa backend=tmux endpoint=firstmate:fm-relaunch-pi-switch-1505491 worktree=/home/clif/.treehouse/smoke-0a609f/1/smoke
+switch rc=0
+dispatch_model=zai/glm-5.3
+dispatch_effort=low
+model=xai/grok-4.5
+effort=low
+account_provider=xai
+=== relaunch (no flags) must come back on last confirmed profile
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.7t9192
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /tmp/fm-lab.7t9192
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  watcher supervision needs Stop-owned automatic recovery; inspect the hook registration and startup status before ending the turn.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+relaunched relaunch-pi-switch-1505491 harness=pi from=pi model=xai/grok-4.5 effort=low backend=tmux endpoint=firstmate:fm-relaunch-pi-switch-1505491 worktree=/home/clif/.treehouse/smoke-0a609f/1/smoke
+relaunch rc=0
+--- meta after relaunch
+model=xai/grok-4.5
+effort=low
+dispatch_model=zai/glm-5.3
+dispatch_effort=low
+--- pane footer after relaunch
+~/.treehouse/smoke-0a609f/1/smoke (detached)
+$0.000 (sub) 0.4%/500k (auto)                               (xai) grok-4.5 • low

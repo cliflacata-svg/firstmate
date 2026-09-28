@@ -1,0 +1,22 @@
+ok - pi extension reports agent_start busy, settles idle only via ctx.isIdle(), and keeps turn_end a notification
+ok - pi extension awaits agent_settled before the next agent_start without a test delay
+ok - pi extension events from a superseded incarnation are rejected as stale
+ok - pi extension arms a live-switch handshake, applies idle changes, and refuses busy, missing, and oversize destinations
+ok - kimi and grok install no unverified semantic wiring and classify through their own gates
+not ok - busy drive failed: file:///tmp/fm-busy-adapter-wiring.3zWppF/oc-lifecycle/wt/.opencode/plugins/fm-busy-state.js:11
+const busyEvent = (state: string, event: string) =>
+                        ^
+
+SyntaxError: Unexpected token ':'
+    at compileSourceTextModule (node:internal/modules/esm/utils:346:16)
+    at ModuleLoader.moduleStrategy (node:internal/modules/esm/translators:107:18)
+    at #translate (node:internal/modules/esm/loader:546:20)
+    at afterLoad (node:internal/modules/esm/loader:596:29)
+    at ModuleLoader.loadAndTranslate (node:internal/modules/esm/loader:601:12)
+    at #createModuleJob (node:internal/modules/esm/loader:624:36)
+    at #getJobFromResolveResult (node:internal/modules/esm/loader:343:34)
+    at ModuleLoader.getModuleJobForImport (node:internal/modules/esm/loader:311:41)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:664:25)
+
+Node.js v22.22.1

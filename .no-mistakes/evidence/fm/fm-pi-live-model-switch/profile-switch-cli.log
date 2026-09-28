@@ -1,0 +1,59 @@
+$ fm-profile-switch.sh --checkpoint complexity --current pi:zai/glm-5.3:medium:zai
+action=live-switch
+jev=off
+reason=checkpoint complexity decision escalate
+harness=pi
+model=openai-codex/gpt-5.6-sol
+effort=xhigh
+provider=codex
+
+$ fm-profile-switch.sh --checkpoint quota --current pi:zai/glm-5.3:medium:zai
+action=live-switch
+jev=off
+reason=checkpoint quota decision move-provider
+harness=pi
+model=openai-codex/gpt-5.6-luna
+effort=medium
+provider=codex
+
+$ fm-profile-switch.sh --checkpoint phase --routine --current pi:openai-codex/gpt-5.6-terra:medium:codex
+action=live-switch
+jev=off
+reason=checkpoint phase decision reduce
+harness=pi
+model=zai/glm-5.3
+effort=low
+provider=zai
+
+$ fm-profile-switch.sh --checkpoint phase --current pi:openai-codex/gpt-5.6-terra:medium:codex
+action=hold
+jev=off
+reason=checkpoint phase does not authorize a profile change
+
+$ fm-profile-switch.sh --checkpoint quota --current pi:openai-codex/gpt-5.6-sol:xhigh:codex
+action=live-switch
+jev=off
+reason=checkpoint quota decision move-provider
+harness=pi
+model=zai/glm-5.3
+effort=low
+provider=zai
+
+$ fm-profile-switch.sh --checkpoint quota --current pi:openai-codex/gpt-5.6-sol:xhigh:codex --rules crew-dispatch.final.json
+action=live-switch
+jev=off
+reason=checkpoint quota decision move-provider
+harness=pi
+model=xai/grok-4.6
+effort=xhigh
+provider=grok
+
+$ fm-profile-switch.sh --checkpoint quota --current pi:zai/glm-5.3:medium:zai --rules crew-dispatch.final.json
+action=live-switch
+jev=off
+reason=checkpoint quota decision move-provider
+harness=pi
+model=openai-codex/gpt-5.6-luna
+effort=medium
+provider=codex
+

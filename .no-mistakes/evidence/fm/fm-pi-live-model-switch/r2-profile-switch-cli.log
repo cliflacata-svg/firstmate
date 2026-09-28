@@ -1,0 +1,114 @@
+### rules=/home/clif/Apps/firstmate/data/fm-pi-live-model-switch/crew-dispatch-pi.proposed.json
+$ fm-profile-switch.sh --checkpoint quota --current pi:openai-codex/gpt-5.6-sol:xhigh:openai-codex
+action=live-switch
+jev=off
+reason=checkpoint quota decision move-provider
+harness=pi
+model=zai/glm-5.3
+effort=low
+provider=zai
+rc=0
+$ fm-profile-switch.sh --checkpoint quota --current pi:zai/glm-5.3:medium:zai
+action=live-switch
+jev=off
+reason=checkpoint quota decision move-provider
+harness=pi
+model=openai-codex/gpt-5.6-luna
+effort=medium
+provider=codex
+rc=0
+$ fm-profile-switch.sh --checkpoint complexity --current pi:zai/glm-5.3:medium:zai
+action=live-switch
+jev=off
+reason=checkpoint complexity decision escalate
+harness=pi
+model=openai-codex/gpt-5.6-sol
+effort=xhigh
+provider=codex
+rc=0
+$ fm-profile-switch.sh --checkpoint stall --current pi:openai-codex/gpt-5.6-terra:medium:openai-codex
+action=live-switch
+jev=off
+reason=checkpoint stall decision escalate
+harness=pi
+model=openai-codex/gpt-5.6-sol
+effort=xhigh
+provider=codex
+rc=0
+$ fm-profile-switch.sh --checkpoint phase --current pi:openai-codex/gpt-5.6-terra:medium:openai-codex
+action=hold
+jev=off
+reason=checkpoint phase does not authorize a profile change
+rc=0
+$ fm-profile-switch.sh --checkpoint phase --routine --current pi:openai-codex/gpt-5.6-terra:medium:openai-codex
+action=live-switch
+jev=off
+reason=checkpoint phase decision reduce
+harness=pi
+model=zai/glm-5.3
+effort=low
+provider=zai
+rc=0
+$ fm-profile-switch.sh --checkpoint quota --current pi:zai/glm-5.3:medium:zai --candidates pi:zai/glm-5.3:medium:zai,pi:openai-codex/gpt-5.6-terra:medium:openai-codex
+action=hold
+jev=off
+reason=no eligible destination for move-provider from pi:zai/glm-5.3:medium:zai
+rc=0
+### rules=/home/clif/Apps/firstmate/config/crew-dispatch.json
+$ fm-profile-switch.sh --checkpoint quota --current pi:openai-codex/gpt-5.6-sol:xhigh:openai-codex
+action=live-switch
+jev=off
+reason=checkpoint quota decision move-provider
+harness=pi
+model=zai/glm-5.3
+effort=low
+provider=
+rc=0
+$ fm-profile-switch.sh --checkpoint quota --current pi:zai/glm-5.3:medium:zai
+action=live-switch
+jev=off
+reason=checkpoint quota decision move-provider
+harness=pi
+model=zai/glm-5.3
+effort=low
+provider=
+rc=0
+$ fm-profile-switch.sh --checkpoint complexity --current pi:zai/glm-5.3:medium:zai
+action=relaunch
+jev=off
+reason=checkpoint complexity decision escalate requires a harness change
+harness=codex
+model=
+effort=xhigh
+provider=
+rc=0
+$ fm-profile-switch.sh --checkpoint stall --current pi:openai-codex/gpt-5.6-terra:medium:openai-codex
+action=relaunch
+jev=off
+reason=checkpoint stall decision escalate requires a harness change
+harness=codex
+model=
+effort=xhigh
+provider=
+rc=0
+$ fm-profile-switch.sh --checkpoint phase --current pi:openai-codex/gpt-5.6-terra:medium:openai-codex
+action=hold
+jev=off
+reason=checkpoint phase does not authorize a profile change
+rc=0
+$ fm-profile-switch.sh --checkpoint phase --routine --current pi:openai-codex/gpt-5.6-terra:medium:openai-codex
+action=live-switch
+jev=off
+reason=checkpoint phase decision reduce
+harness=pi
+model=zai/glm-5.3
+effort=low
+provider=
+rc=0
+$ fm-profile-switch.sh --checkpoint quota --current pi:zai/glm-5.3:medium:zai --candidates pi:zai/glm-5.3:medium:zai,pi:openai-codex/gpt-5.6-terra:medium:openai-codex
+action=hold
+jev=off
+reason=no eligible destination for move-provider from pi:zai/glm-5.3:medium:zai
+rc=0
+### installed pi rotation providers
+

@@ -1,0 +1,245 @@
++ set -u
+++ dirname tests/fm-pi-switch-model-live-e2e.test.sh
++ . tests/lib.sh
+++ '[' -n '' ']'
+++ FM_TEST_LIB_SOURCED=1
+++ umask 022
++++ dirname tests/lib.sh
+++ . tests/git-config-helpers.sh
++++ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
++++ GIT_CONFIG_GLOBAL=/dev/null
++++ GIT_CONFIG_NOSYSTEM=1
+++ export FM_GATE_REFUSE_BYPASS=1
+++ FM_GATE_REFUSE_BYPASS=1
+++ export FM_TEST_SEAM=1
+++ FM_TEST_SEAM=1
+++ unset FM_TASK_ID
+++ unset TASKS_AXI_FILE TASKS_AXI_BACKEND
+++++ dirname tests/lib.sh
++++ cd tests/..
++++ pwd
+++ ROOT=/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N19Z7SA721P12TDAX9RYYA
+++ FM_TEST_CLEANUP_DIRS=()
++++ mktemp /tmp/.fm-test-cleanup.1384418.XXXXXX
+++ FM_TEST_CLEANUP_REGISTRY=/tmp/.fm-test-cleanup.1384418.nlR01V
++++ fm_test_pid_identity 1384418
++++ local pid=1384418
++++ FM_STATE_OVERRIDE=/tmp
++++ bash -c '. "$1"; fm_pid_identity "$2"' _ /home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N19Z7SA721P12TDAX9RYYA/bin/fm-wake-lib.sh 1384418
+++ FM_TEST_OWNER_IDENTITY='linux-starttime=10512592 cmdline-hex=62617368002d780074657374732f666d2d70692d7377697463682d6d6f64656c2d6c6976652d6532652e746573742e736800'
++++ mktemp /tmp/.fm-test-procevent.1384418.XXXXXX
+++ FM_TEST_PROCEVENT_REGISTRY=/tmp/.fm-test-procevent.1384418.Qorub6
++++ mktemp /tmp/.fm-test-watcher.1384418.XXXXXX
+++ FM_TEST_WATCHER_REGISTRY=/tmp/.fm-test-watcher.1384418.0AfE23
+++ FM_TEST_STUB_MAX_BLOCK_SECONDS=120
+++ export FM_TEST_STUB_MAX_BLOCK_SECONDS
+++ trap fm_test_cleanup EXIT
+++ trap 'fm_test_cleanup; exit 130' INT
+++ trap 'fm_test_cleanup; exit 143' TERM
+++ trap 'fm_test_cleanup; exit 129' HUP
+++ trap 'fm_test_cleanup; exit 131' QUIT
+++ FM_TEST_ORPHAN_MAX_AGE_SECONDS=3600
+++ '[' 0 '!=' 1 ']'
+++ fm_test_reap_orphans
+++ local marker dir mtime now owner_pid owner_identity current_identity
++++ date +%s
+++ now=1790634344
+++ for marker in "${TMPDIR:-/tmp}"/fm-*/.fm-test-fixture
+++ '[' -e '/tmp/fm-*/.fm-test-fixture' ']'
+++ continue
++ fm_live_gate opt-in FM_PI_SWITCH_LIVE pi tmux jq
++ local policy=opt-in vars=FM_PI_SWITCH_LIVE
++ shift 2
++ local var value rest primary requested=0 disabled_by= tool
++ var_list=()
++ local -a var_list
++ case "$policy" in
++ rest=FM_PI_SWITCH_LIVE
++ '[' -n FM_PI_SWITCH_LIVE ']'
++ var=FM_PI_SWITCH_LIVE
++ '[' FM_PI_SWITCH_LIVE = FM_PI_SWITCH_LIVE ']'
++ rest=
++ '[' -n FM_PI_SWITCH_LIVE ']'
++ var_list+=("$var")
++ '[' -n '' ']'
++ '[' 1 -gt 0 ']'
++ primary=FM_PI_SWITCH_LIVE
++ for var in "${var_list[@]}"
++ value=1
++ case "$value" in
++ requested=1
++ '[' 1 -eq 0 ']'
++ for tool in "$@"
++ command -v pi
++ continue
++ for tool in "$@"
++ command -v tmux
++ continue
++ for tool in "$@"
++ command -v jq
++ continue
++ export DISABLE_AUTOUPDATER=1
++ DISABLE_AUTOUPDATER=1
++ return 0
++++ dirname tests/fm-pi-switch-model-live-e2e.test.sh
+++ cd tests/..
+++ pwd
++ ROOT=/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N19Z7SA721P12TDAX9RYYA
++ . /home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N19Z7SA721P12TDAX9RYYA/bin/fm-backend.sh
+++ FM_BACKEND_SCRIPT=/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N19Z7SA721P12TDAX9RYYA/bin/fm-backend.sh
+++++ dirname /home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N19Z7SA721P12TDAX9RYYA/bin/fm-backend.sh
++++ cd /home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N19Z7SA721P12TDAX9RYYA/bin
++++ pwd
+++ FM_BACKEND_LIB_DIR=/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N19Z7SA721P12TDAX9RYYA/bin
+++ unset FM_BACKEND_SCRIPT
++++ cd /home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N19Z7SA721P12TDAX9RYYA/bin/..
++++ pwd
+++ FM_BACKEND_DEFAULT_ROOT=/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N19Z7SA721P12TDAX9RYYA
+++ FM_ROOT=/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N19Z7SA721P12TDAX9RYYA
+++ FM_HOME=/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N19Z7SA721P12TDAX9RYYA
+++ FM_BACKEND_CONFIG_DIR=/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N19Z7SA721P12TDAX9RYYA/config
+++ FM_BACKEND_KNOWN='tmux herdr zellij orca cmux'
+++ FM_BACKEND_SPAWN='tmux herdr zellij orca cmux'
+++ FM_BACKEND_CMUX_BUNDLE_ID=com.cmuxterm.app
+++ FM_BACKEND_VISIBLE_CAPTURE='tmux herdr zellij'
++ . /home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N19Z7SA721P12TDAX9RYYA/bin/fm-pi-switch-lib.sh
+++ FM_PI_SWITCH_SCHEMA=fm-pi-switch-model.v1
++ TASK=smoke-pi-switch-1384418
+++ mktemp -d /tmp/fm-pi-switch-live.XXXXXX
++ LAB=/tmp/fm-pi-switch-live.FS6LgU
++ SOCKET_DIR=
++ SPAWNED=0
++ WT=
++ trap cleanup EXIT
++ /home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N19Z7SA721P12TDAX9RYYA/bin/fm-lab-home.sh create /tmp/fm-pi-switch-live.FS6LgU
+++ /home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N19Z7SA721P12TDAX9RYYA/bin/fm-lab-home.sh tmux-dir /tmp/fm-pi-switch-live.FS6LgU
++ SOCKET_DIR=/tmp/fml.miGmf2
++ printf 'manual\n'
++ printf 'tmux\n'
++ PROJ=/tmp/fm-pi-switch-live.FS6LgU/projects/smoke
++ mkdir -p /tmp/fm-pi-switch-live.FS6LgU/projects/smoke
++ git -C /tmp/fm-pi-switch-live.FS6LgU/projects/smoke init -q -b main
++ git -C /tmp/fm-pi-switch-live.FS6LgU/projects/smoke config user.email smoke@example.invalid
++ git -C /tmp/fm-pi-switch-live.FS6LgU/projects/smoke config user.name smoke
++ printf 'smoke project\n'
++ git -C /tmp/fm-pi-switch-live.FS6LgU/projects/smoke add README.md
++ git -C /tmp/fm-pi-switch-live.FS6LgU/projects/smoke commit -qm 'fixture: smoke project'
++ mkdir -p /tmp/fm-pi-switch-live.FS6LgU/data/smoke-pi-switch-1384418
+++ date +%s
++ TOKEN=PINECONE-1790634344
++ STATUS=/tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.status
++ cat
++ export FM_HOME=/tmp/fm-pi-switch-live.FS6LgU TMUX_TMPDIR=/tmp/fml.miGmf2
++ FM_HOME=/tmp/fm-pi-switch-live.FS6LgU
++ TMUX_TMPDIR=/tmp/fml.miGmf2
++ FM_HOME=/tmp/fm-pi-switch-live.FS6LgU
++ /home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N19Z7SA721P12TDAX9RYYA/bin/fm-spawn.sh smoke-pi-switch-1384418 /tmp/fm-pi-switch-live.FS6LgU/projects/smoke --scout --harness pi --model zai/glm-5.3 --effort low --backend tmux
+spawned smoke-pi-switch-1384418 harness=pi kind=scout window=firstmate:fm-smoke-pi-switch-1384418 worktree=/home/clif/.treehouse/smoke-dfef66/1/smoke
++ SPAWNED=1
+++ fm_meta_get /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta worktree
+++ local meta=/tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta key=worktree line value=
+++ '[' -f /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta ']'
+++ printf %s /home/clif/.treehouse/smoke-dfef66/1/smoke
++ WT=/home/clif/.treehouse/smoke-dfef66/1/smoke
++ '[' -n /home/clif/.treehouse/smoke-dfef66/1/smoke ']'
+++ fm_meta_get /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta window
+++ local meta=/tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta key=window line value=
+++ '[' -f /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta ']'
+++ printf %s firstmate:fm-smoke-pi-switch-1384418
++ SESSION_BEFORE=firstmate:fm-smoke-pi-switch-1384418
++ idle_line=
+++ seq 1 90
++ for _ in $(seq 1 90)
++ '[' -f /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.status ']'
++ sleep 2
++ for _ in $(seq 1 90)
++ '[' -f /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.status ']'
++ sleep 2
++ for _ in $(seq 1 90)
++ '[' -f /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.status ']'
++ sleep 2
++ for _ in $(seq 1 90)
++ '[' -f /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.status ']'
++ sleep 2
++ for _ in $(seq 1 90)
++ '[' -f /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.status ']'
++ grep -q 'smoke-idle PINECONE-1790634344' /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.status
+++ grep 'smoke-idle PINECONE-1790634344' /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.status
+++ tail -1
++ idle_line='working [at=1790634354]: smoke-idle PINECONE-1790634344'
++ break
++ '[' -n 'working [at=1790634354]: smoke-idle PINECONE-1790634344' ']'
++ '[' -f /home/clif/.treehouse/smoke-dfef66/1/smoke/SMOKE.txt ']'
++ grep -Fq PINECONE-1790634344 /home/clif/.treehouse/smoke-dfef66/1/smoke/SMOKE.txt
+++ fm_meta_get /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta model
+++ local meta=/tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta key=model line value=
+++ '[' -f /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta ']'
+++ printf %s zai/glm-5.3
++ model_before=zai/glm-5.3
++ '[' zai/glm-5.3 = zai/glm-5.3 ']'
++ FM_HOME=/tmp/fm-pi-switch-live.FS6LgU
++ /home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N19Z7SA721P12TDAX9RYYA/bin/fm-control.sh smoke-pi-switch-1384418 switch-model --effort high
+switched-model smoke-pi-switch-1384418 harness=pi from=zai/glm-5.3:low model=zai/glm-5.3 effort=high provider=zai session=01a0ea1f-d158-7705-a134-e2c4f9db3f4e backend=tmux endpoint=firstmate:fm-smoke-pi-switch-1384418 worktree=/home/clif/.treehouse/smoke-dfef66/1/smoke
+++ fm_meta_get /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta model
+++ local meta=/tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta key=model line value=
+++ '[' -f /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta ']'
+++ printf %s zai/glm-5.3
++ model_mid=zai/glm-5.3
+++ fm_meta_get /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta effort
+++ local meta=/tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta key=effort line value=
+++ '[' -f /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta ']'
+++ printf %s high
++ effort_mid=high
++ '[' zai/glm-5.3 = zai/glm-5.3 ']'
++ '[' high = high ']'
++ FM_HOME=/tmp/fm-pi-switch-live.FS6LgU
++ /home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N19Z7SA721P12TDAX9RYYA/bin/fm-control.sh smoke-pi-switch-1384418 switch-model --model xai/grok-4.5 --effort low
+switched-model smoke-pi-switch-1384418 harness=pi from=zai/glm-5.3:high model=xai/grok-4.5 effort=low provider=xai session=01a0ea1f-d158-7705-a134-e2c4f9db3f4e backend=tmux endpoint=firstmate:fm-smoke-pi-switch-1384418 worktree=/home/clif/.treehouse/smoke-dfef66/1/smoke
+++ fm_meta_get /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta model
+++ local meta=/tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta key=model line value=
+++ '[' -f /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta ']'
+++ printf %s xai/grok-4.5
++ model_after=xai/grok-4.5
++ '[' xai/grok-4.5 = xai/grok-4.5 ']'
+++ fm_meta_get /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta window
+++ local meta=/tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta key=window line value=
+++ '[' -f /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta ']'
+++ printf %s firstmate:fm-smoke-pi-switch-1384418
++ SESSION_AFTER=firstmate:fm-smoke-pi-switch-1384418
++ '[' firstmate:fm-smoke-pi-switch-1384418 = firstmate:fm-smoke-pi-switch-1384418 ']'
+++ fm_meta_get /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta dispatch_model
+++ local meta=/tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta key=dispatch_model line value=
+++ '[' -f /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.meta ']'
+++ printf %s zai/glm-5.3
++ '[' zai/glm-5.3 = zai/glm-5.3 ']'
++ '[' -f /home/clif/.treehouse/smoke-dfef66/1/smoke/SMOKE.txt ']'
++ grep -Fq PINECONE-1790634344 /home/clif/.treehouse/smoke-dfef66/1/smoke/SMOKE.txt
+++ fm_pi_switch_log_path /tmp/fm-pi-switch-live.FS6LgU/state smoke-pi-switch-1384418
+++ printf %s/%s.model-switch.log /tmp/fm-pi-switch-live.FS6LgU/state smoke-pi-switch-1384418
++ log=/tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.model-switch.log
++ grep -q status=applied /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.model-switch.log
+++ fm_pi_switch_ack_path /tmp/fm-pi-switch-live.FS6LgU/state smoke-pi-switch-1384418
+++ printf %s/%s.model-switch.ack /tmp/fm-pi-switch-live.FS6LgU/state smoke-pi-switch-1384418
++ ack=/tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.model-switch.ack
+++ jq -r '.session_id // empty' /tmp/fm-pi-switch-live.FS6LgU/state/smoke-pi-switch-1384418.model-switch.ack
++ session_id=01a0ea1f-d158-7705-a134-e2c4f9db3f4e
++ '[' -n 01a0ea1f-d158-7705-a134-e2c4f9db3f4e ']'
++ pass 'Pi live switch kept task smoke-pi-switch-1384418 session 01a0ea1f-d158-7705-a134-e2c4f9db3f4e worktree /home/clif/.treehouse/smoke-dfef66/1/smoke edit and codeword PINECONE-1790634344; model zai/glm-5.3 -> xai/grok-4.5'
++ printf 'ok - %s\n' 'Pi live switch kept task smoke-pi-switch-1384418 session 01a0ea1f-d158-7705-a134-e2c4f9db3f4e worktree /home/clif/.treehouse/smoke-dfef66/1/smoke edit and codeword PINECONE-1790634344; model zai/glm-5.3 -> xai/grok-4.5'
+ok - Pi live switch kept task smoke-pi-switch-1384418 session 01a0ea1f-d158-7705-a134-e2c4f9db3f4e worktree /home/clif/.treehouse/smoke-dfef66/1/smoke edit and codeword PINECONE-1790634344; model zai/glm-5.3 -> xai/grok-4.5
++ cleanup
++ '[' 1 = 1 ']'
++ FM_HOME=/tmp/fm-pi-switch-live.FS6LgU
++ /home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N19Z7SA721P12TDAX9RYYA/bin/fm-control.sh smoke-pi-switch-1384418 exit
++ '[' -n /tmp/fml.miGmf2 ']'
++ TMUX_TMPDIR=/tmp/fml.miGmf2
++ tmux kill-server
++ '[' -n /home/clif/.treehouse/smoke-dfef66/1/smoke ']'
++ '[' -d /home/clif/.treehouse/smoke-dfef66/1/smoke ']'
++ command -v treehouse
++ treehouse return /home/clif/.treehouse/smoke-dfef66/1/smoke
++ chmod -R u+w /tmp/fm-pi-switch-live.FS6LgU
++ rm -rf /tmp/fm-pi-switch-live.FS6LgU
++ '[' -n /home/clif/.treehouse/smoke-dfef66/1/smoke ']'
++ '[' -d /home/clif/.treehouse/smoke-dfef66/1/smoke ']'
++ rm -rf /home/clif/.treehouse/smoke-dfef66/1/smoke
