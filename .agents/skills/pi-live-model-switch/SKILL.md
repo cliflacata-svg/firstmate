@@ -56,6 +56,8 @@ Automatic switches among verified profiles on the existing accounts are authoriz
 - Prefer session continuity among suitable Pi choices.
 - Honor the selector's cooldown and per-hour retry bound.
 
-Jev, when `TYPESAFE_API_KEY` is present, may classify only among `escalate`, `move-provider`, `reduce`, and `stay`.
-It must not invent model IDs.
-When the key is absent, the selector's checkpoint mapping is the judged path; report `jev=off`.
+Pass the worker's checkpoint line as `--evidence`.
+When `TYPESAFE_API_KEY` is configured, the selector makes one bounded Jev call per checkpoint, after cooldown and retry checks, and Jev classifies only among the decisions that checkpoint allows (`escalate`, `move-provider`, `reduce` with `--routine`, `stay`).
+Jev never sees or returns model IDs; the selector still owns every destination check.
+`jev=on` means Jev's answer was used; `jev=ambiguous`, `error`, or `never-send` fall back to the checkpoint mapping.
+When the key is absent there is no Jev call and the output says `jev=off`: the checkpoint mapping is a proposal, and the switch decision is your judgment.

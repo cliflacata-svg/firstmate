@@ -36,8 +36,39 @@ cat > "$RULES" <<'EOF'
 }
 EOF
 
+EMPTY_HOME="$TMP_ROOT/empty-home"
+mkdir -p "$EMPTY_HOME"
+
 run_switch() {
-  env -u TYPESAFE_API_KEY "$SWITCH" --rules "$RULES" "$@" 2>&1
+  env -u TYPESAFE_API_KEY FM_HOME="$EMPTY_HOME" "$SWITCH" --rules "$RULES" "$@" 2>&1
+}
+
+FAKEBIN="$TMP_ROOT/fakebin"
+JEV_LOG="$TMP_ROOT/jev"
+mkdir -p "$FAKEBIN" "$JEV_LOG"
+cat > "$FAKEBIN/curl" <<'SH'
+#!/usr/bin/env bash
+out=
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) out=$2; shift 2 ;;
+    -H) [ "$2" = @/dev/fd/3 ] && cat <&3 > "${JEV_LOG:?}/header"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+cat > "$JEV_LOG/request"
+printf '%s' "${FAKE_JEV_RESPONSE:?}" > "$out"
+printf '200'
+SH
+chmod +x "$FAKEBIN/curl"
+
+run_jev() {  # <response-json> <args...>
+  local response=$1
+  shift
+  rm -f "$JEV_LOG"/*
+  PATH="$FAKEBIN:$PATH" JEV_LOG="$JEV_LOG" FAKE_JEV_RESPONSE="$response" \
+    TYPESAFE_API_KEY=test-key FM_HOME="$EMPTY_HOME" \
+    "$SWITCH" --rules "$RULES" "$@" 2>&1
 }
 
 test_complexity_escalates_to_live_switch() {
@@ -125,7 +156,80 @@ test_retry_bound_holds() {
   pass "retry bound prevents oscillation"
 }
 
+test_absent_key_never_calls_jev() {
+  local out
+  rm -f "$JEV_LOG"/*
+  out=$(PATH="$FAKEBIN:$PATH" JEV_LOG="$JEV_LOG" FAKE_JEV_RESPONSE='{}' run_switch \
+    --checkpoint complexity --current 'pi:zai/glm-5.3:low:zai')
+  assert_contains "$out" "jev=off" "absent key must report jev=off"
+  [ ! -e "$JEV_LOG/request" ] || fail "absent key must not call Jev"
+  pass "absent Jev key falls back without a network call"
+}
+
+test_jev_stay_holds() {
+  local out
+  out=$(run_jev '{"answers":{"decision":{"choice":"stay","confidence":0.9}}}' \
+    --checkpoint complexity --current 'pi:zai/glm-5.3:low:zai' \
+    --evidence 'tests pass after one retry')
+  assert_contains "$out" "jev=on" "a confident Jev answer is used"
+  assert_contains "$out" "action=hold" "Jev stay must hold"
+  assert_contains "$(cat "$JEV_LOG/header")" "Authorization: Bearer test-key" "the key reaches curl on the fd header"
+  assert_equals '["escalate","stay"]' "$(jq -c '.questions.decision.criteria | keys' "$JEV_LOG/request")" \
+    "complexity offers only escalate and stay"
+  assert_equals 'tests pass after one retry' "$(jq -r '.state.checkpoint.evidence' "$JEV_LOG/request")" \
+    "the evidence reaches Jev"
+  pass "Jev may keep the current profile at a complexity checkpoint"
+}
+
+test_jev_escalates_on_phase() {
+  local out
+  out=$(run_jev '{"answers":{"decision":{"choice":"escalate","confidence":0.8}}}' \
+    --checkpoint phase --current 'pi:zai/glm-5.3:low:zai')
+  assert_contains "$out" "jev=on" "a confident Jev answer is used"
+  assert_contains "$out" "model=openai-codex/gpt-5.6-sol" "Jev escalate reaches the stronger profile"
+  pass "Jev may escalate at a phase checkpoint"
+}
+
+test_jev_disallowed_choice_falls_back() {
+  local out
+  out=$(run_jev '{"answers":{"decision":{"choice":"reduce","confidence":0.99}}}' \
+    --checkpoint phase --current 'pi:openai-codex/gpt-5.6-sol:xhigh:codex')
+  assert_contains "$out" "jev=error" "reduce without --routine is not an allowed answer"
+  assert_contains "$out" "action=hold" "fallback mapping holds a non-routine phase"
+  pass "Jev cannot choose a decision the checkpoint does not allow"
+}
+
+test_jev_low_confidence_falls_back() {
+  local out
+  out=$(run_jev '{"answers":{"decision":{"choice":"stay","confidence":0.3}}}' \
+    --checkpoint quota --current 'pi:zai/glm-5.3:low:zai')
+  assert_contains "$out" "jev=ambiguous" "a low-confidence answer is ambiguous"
+  assert_contains "$out" "provider=codex" "fallback mapping moves provider on quota"
+  pass "low-confidence Jev answers fall back to the checkpoint mapping"
+}
+
+test_jev_never_send_skips_call() {
+  local out home="$TMP_ROOT/never-send-home"
+  mkdir -p "$home/config"
+  printf 'Project Nightjar\n' > "$home/config/dispatch-never-send"
+  rm -f "$JEV_LOG"/*
+  out=$(PATH="$FAKEBIN:$PATH" JEV_LOG="$JEV_LOG" FAKE_JEV_RESPONSE='{}' \
+    TYPESAFE_API_KEY=test-key FM_HOME="$home" "$SWITCH" --rules "$RULES" \
+    --checkpoint complexity --current 'pi:zai/glm-5.3:low:zai' \
+    --evidence 'blocked on project   nightjar schema' 2>&1)
+  assert_contains "$out" "jev=never-send" "a never-send match must be reported"
+  [ ! -e "$JEV_LOG/request" ] || fail "a never-send match must not call Jev"
+  assert_contains "$out" "action=live-switch" "the checkpoint mapping still decides"
+  pass "never-send evidence is not sent to Jev"
+}
+
 test_complexity_escalates_to_live_switch
+test_absent_key_never_calls_jev
+test_jev_stay_holds
+test_jev_escalates_on_phase
+test_jev_disallowed_choice_falls_back
+test_jev_low_confidence_falls_back
+test_jev_never_send_skips_call
 test_quota_moves_provider
 test_phase_without_routine_holds
 test_routine_phase_reduces
