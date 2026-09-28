@@ -55,7 +55,10 @@ classify() {  # <harness> <id> <state-dir>
 # Node host and fire one lifecycle handler. Modes: agent-start, settle-idle,
 # settle-continuing, turn-end.
 drive_pi_ext() {
-  EXT_PATH="$1" MODE="$2" node --input-type=module 2>&1 <<'EOF'
+  local js
+  js="${1%.ts}.mjs"
+  cp "$1" "$js"
+  EXT_PATH="$js" MODE="$2" node --input-type=module 2>&1 <<'EOF'
 import { pathToFileURL } from "node:url";
 const mod = await import(pathToFileURL(process.env.EXT_PATH).href);
 const handlers = {};
@@ -88,6 +91,8 @@ test_pi_extension_semantic_lifecycle() {
   state="$HOME_DIR/state"
   ext="$state/$id.pi-ext.ts"
   assert_present "$ext" "pi spawn did not write the per-task extension"
+  grep -q '^dispatch_harness=pi$' "$state/$id.meta" \
+    || fail "pi spawn did not snapshot dispatch_harness"
 
   out=$(classify pi "$id" "$state")
   [ "$out" = "busy fm-spawn" ] || fail "seed after spawn must be 'busy fm-spawn', got '$out'"
@@ -134,6 +139,90 @@ test_pi_extension_serializes_settle_before_next_start() {
   out=$(classify pi "$id" "$state")
   [ "$out" = "busy pi-ext" ] || fail "a fresh agent_start after agent_settled must win, got '$out'"
   pass "pi extension awaits agent_settled before the next agent_start without a test delay"
+}
+
+drive_pi_switch() {
+  # Load the generated extension, fire session_start, publish a request, and
+  # wait for the matching ack. MODE=applied|busy|missing|oversize.
+  local js
+  js="${1%.ts}.mjs"
+  cp "$1" "$js"
+  EXT_PATH="$js" REQ="$2" ACK="$3" READY="$4" MODE="$5" node --input-type=module 2>&1 <<'EOF'
+import { pathToFileURL } from "node:url";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+const mod = await import(pathToFileURL(process.env.EXT_PATH).href);
+const handlers = {};
+const pi = {
+  on: (name, fn) => { handlers[name] = fn; },
+  events: { on: (name, fn) => { handlers[name] = fn; } },
+  _model: { provider: "zai", id: "glm-5.3", contextWindow: 1_000_000 },
+  _effort: "low",
+  setModel: async (model) => {
+    if (process.env.MODE === "authfail") return false;
+    pi._model = model;
+    return true;
+  },
+  setThinkingLevel: (level) => { pi._effort = level; },
+  getThinkingLevel: () => pi._effort,
+};
+const ctx = {
+  isIdle: () => process.env.MODE !== "busy",
+  get model() { return pi._model; },
+  modelRegistry: {
+    find: (provider, id) => {
+      if (process.env.MODE === "missing") return undefined;
+      return { provider, id, contextWindow: process.env.MODE === "oversize" ? 100 : 272_000 };
+    },
+  },
+  getContextUsage: () => ({ tokens: process.env.MODE === "oversize" ? 500 : 10, contextWindow: 1_000_000, percent: 1 }),
+  sessionManager: { getSessionId: () => "sess-live-1" },
+};
+mod.default(pi);
+await handlers["session_start"]({}, ctx);
+if (!existsSync(process.env.READY)) throw new Error("session_start did not write the handshake");
+const req = JSON.parse(readFileSync(process.env.REQ, "utf8"));
+await new Promise((resolve) => setTimeout(resolve, 400));
+if (!existsSync(process.env.ACK)) throw new Error("extension did not write an ack");
+const ack = JSON.parse(readFileSync(process.env.ACK, "utf8"));
+if (ack.id !== req.id) throw new Error("ack id mismatch");
+process.stdout.write(JSON.stringify(ack) + "\n");
+if (handlers["session_shutdown"]) handlers["session_shutdown"]({}, ctx);
+EOF
+}
+
+test_pi_extension_live_switch_handshake() {
+  local rec id=busy-pi-switch out state ext req ack ready
+  rec=$(make_spawn_case pi-switch pi "$id")
+  read_case_record "$rec"
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" "$PROJ_DIR")
+  expect_code 0 $? "pi spawn should succeed: $out"
+  state="$HOME_DIR/state"
+  ext="$state/$id.pi-ext.ts"
+  req="$state/$id.model-switch.req"
+  ack="$state/$id.model-switch.ack"
+  ready="$state/$id.model-switch.ready"
+  jq -nc '{schema:"fm-pi-switch-model.v1",id:"req-1",provider:"openai-codex",model_id:"gpt-5.6-luna",model:"openai-codex/gpt-5.6-luna",effort:"low",ts:1}' > "$req"
+  out=$(drive_pi_switch "$ext" "$req" "$ack" "$ready" applied) || fail "applied drive failed: $out"
+  printf '%s' "$out" | jq -e '.status == "applied" and .model == "openai-codex/gpt-5.6-luna" and .session_id == "sess-live-1"' >/dev/null \
+    || fail "applied ack was wrong: $out"
+
+  rm -f "$ack"
+  jq -nc '{schema:"fm-pi-switch-model.v1",id:"req-2",provider:"openai-codex",model_id:"gpt-5.6-luna",model:"openai-codex/gpt-5.6-luna",effort:"low",ts:2}' > "$req"
+  out=$(drive_pi_switch "$ext" "$req" "$ack" "$ready" busy) || fail "busy drive failed: $out"
+  printf '%s' "$out" | jq -e '.status == "busy"' >/dev/null || fail "busy ack was wrong: $out"
+
+  rm -f "$ack"
+  jq -nc '{schema:"fm-pi-switch-model.v1",id:"req-3",provider:"openai-codex",model_id:"nope",model:"openai-codex/nope",effort:"low",ts:3}' > "$req"
+  out=$(drive_pi_switch "$ext" "$req" "$ack" "$ready" missing) || fail "missing drive failed: $out"
+  printf '%s' "$out" | jq -e '.status == "refused" and .reason == "model-not-found"' >/dev/null \
+    || fail "missing-model ack was wrong: $out"
+
+  rm -f "$ack"
+  jq -nc '{schema:"fm-pi-switch-model.v1",id:"req-4",provider:"openai-codex",model_id:"gpt-5.6-luna",model:"openai-codex/gpt-5.6-luna",effort:"low",ts:4}' > "$req"
+  out=$(drive_pi_switch "$ext" "$req" "$ack" "$ready" oversize) || fail "oversize drive failed: $out"
+  printf '%s' "$out" | jq -e '.status == "refused" and .reason == "context-exceeds-destination"' >/dev/null \
+    || fail "oversize ack was wrong: $out"
+  pass "pi extension arms a live-switch handshake, applies idle changes, and refuses busy, missing, and oversize destinations"
 }
 
 test_pi_extension_stale_incarnation_rejected() {
@@ -425,6 +514,7 @@ test_kimi_and_grok_install_no_unverified_wiring() {
 test_pi_extension_semantic_lifecycle
 test_pi_extension_serializes_settle_before_next_start
 test_pi_extension_stale_incarnation_rejected
+test_pi_extension_live_switch_handshake
 test_kimi_and_grok_install_no_unverified_wiring
 test_opencode_plugin_semantic_lifecycle
 test_claude_hooks_semantic_lifecycle

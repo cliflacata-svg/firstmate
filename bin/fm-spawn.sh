@@ -4530,8 +4530,8 @@ EOF
 // never clear the worker's busy state. The session.idle touch stays the
 // watcher's wake NOTIFICATION, never current-state truth.
 import { execFile } from "node:child_process";
-const busyEvent = (state, event) =>
-  new Promise((resolve) => {
+const busyEvent = (state: string, event: string) =>
+  new Promise<void>((resolve) => {
     execFile("$FM_ROOT/bin/fm-busy-event.sh", [
       "apply", "$STATE_REAL", "$ID", state,
       "--gen", "$BUSY_GEN", "--source", "opencode-plugin", "--event", event,
@@ -4575,8 +4575,9 @@ EOF
     # loaded from inside the project (verified live), but an explicit -e path
     # elsewhere loads without a dialog. Lives in state/, cleaned by teardown.
     cat >"$STATE/$ID.pi-ext.ts" <<EOF
-// Firstmate semantic busy-state events + turn-end notification; written by
-// fm-spawn under the contract owned by bin/fm-busy-lib.sh.
+// Firstmate semantic busy-state events + turn-end notification + live
+// model-switch handshake; written by fm-spawn under the contracts owned by
+// bin/fm-busy-lib.sh and bin/fm-pi-switch-lib.sh.
 // Semantic state: "agent_start" -> busy when a low-level agent run begins;
 // "agent_settled" -> idle only when ctx.isIdle() confirms Pi will not
 // continue automatically - auto-retries, auto-compaction retries, tool
@@ -4585,17 +4586,30 @@ EOF
 // "turn_end" fires at every inner turn boundary (one LLM response plus its
 // tool calls) and stays a wake NOTIFICATION touch for the watcher, never
 // current-state truth.
+// Live switch: session_start arms a request file watcher. setModel and
+// setThinkingLevel run only while ctx.isIdle() is true. Metadata is updated
+// by fm-control after this extension writes a matching ack.
 import { execFile } from "node:child_process";
-const busyEvent = (state: string, event: string) =>
-  new Promise<void>((resolve) => {
+import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+const busyEvent = (state, event) =>
+  new Promise((resolve) => {
     execFile("$FM_ROOT/bin/fm-busy-event.sh", [
       "apply", "$STATE_REAL", "$ID", state,
       "--gen", "$BUSY_GEN", "--source", "pi-ext", "--event", event,
     ], () => resolve());
   });
-export default function (pi: any) {
+const SWITCH_REQ = "$STATE_REAL/$ID.model-switch.req";
+const SWITCH_ACK = "$STATE_REAL/$ID.model-switch.ack";
+const SWITCH_READY = "$STATE_REAL/$ID.model-switch.ready";
+const SWITCH_SCHEMA = "fm-pi-switch-model.v1";
+const writeJson = (path, value) => {
+  const tmp = path + ".tmp";
+  writeFileSync(tmp, JSON.stringify(value) + "\\n");
+  renameSync(tmp, path);
+};
+export default function (pi) {
   pi.on("agent_start", () => busyEvent("busy", "agent-start"));
-  pi.on("agent_settled", (_event: any, ctx: any) => {
+  pi.on("agent_settled", (_event, ctx) => {
     if (ctx && typeof ctx.isIdle === "function" && !ctx.isIdle()) return;
     return busyEvent("idle", "agent-settled");
   });
@@ -4610,6 +4624,111 @@ export default function (pi: any) {
     execFile("$FM_ROOT/bin/fm-busy-event.sh", [
       "progress", "$STATE_REAL", "$ID", "--gen", "$BUSY_GEN",
     ]);
+  });
+  let lastReqId = "";
+  let applying = false;
+  let switchTimer;
+  const currentModelName = (ctx) => {
+    const model = ctx && ctx.model;
+    if (!model || !model.provider || !model.id) return "";
+    return String(model.provider) + "/" + String(model.id);
+  };
+  const applySwitch = async (req, ctx) => {
+    const base = {
+      schema: SWITCH_SCHEMA,
+      id: req.id,
+      session_id: (ctx && ctx.sessionManager && typeof ctx.sessionManager.getSessionId === "function")
+        ? ctx.sessionManager.getSessionId()
+        : "",
+    };
+    if (applying) {
+      writeJson(SWITCH_ACK, { ...base, status: "busy", reason: "switch-in-flight" });
+      return;
+    }
+    if (ctx && typeof ctx.isIdle === "function" && !ctx.isIdle()) {
+      writeJson(SWITCH_ACK, { ...base, status: "busy", reason: "agent-not-idle" });
+      return;
+    }
+    applying = true;
+    try {
+      const provider = String(req.provider || "");
+      const modelId = String(req.model_id || "");
+      const model = ctx && ctx.modelRegistry && typeof ctx.modelRegistry.find === "function"
+        ? ctx.modelRegistry.find(provider, modelId)
+        : undefined;
+      if (!model) {
+        writeJson(SWITCH_ACK, { ...base, status: "refused", reason: "model-not-found", model: currentModelName(ctx) });
+        return;
+      }
+      const usage = ctx && typeof ctx.getContextUsage === "function" ? ctx.getContextUsage() : undefined;
+      const used = usage && typeof usage.tokens === "number" ? usage.tokens : null;
+      const destWindow = typeof model.contextWindow === "number" ? model.contextWindow : null;
+      if (used != null && destWindow != null && used > destWindow) {
+        writeJson(SWITCH_ACK, {
+          ...base,
+          status: "refused",
+          reason: "context-exceeds-destination",
+          model: currentModelName(ctx),
+          tokens: used,
+          context: destWindow,
+        });
+        return;
+      }
+      const ok = await pi.setModel(model);
+      if (!ok) {
+        writeJson(SWITCH_ACK, { ...base, status: "failed", reason: "set-model-auth", model: currentModelName(ctx) });
+        return;
+      }
+      if (req.effort && typeof pi.setThinkingLevel === "function") {
+        pi.setThinkingLevel(req.effort);
+      }
+      const actualModel = currentModelName(ctx);
+      const actualEffort = typeof pi.getThinkingLevel === "function" ? pi.getThinkingLevel() : req.effort || "";
+      writeJson(SWITCH_ACK, {
+        ...base,
+        status: "applied",
+        model: actualModel,
+        effort: actualEffort,
+        tokens: used,
+        context: destWindow,
+      });
+    } catch (err) {
+      writeJson(SWITCH_ACK, {
+        ...base,
+        status: "failed",
+        reason: String(err),
+        model: currentModelName(ctx),
+      });
+    } finally {
+      applying = false;
+    }
+  };
+  const pollSwitch = (ctx) => {
+    try {
+      if (!existsSync(SWITCH_REQ)) return;
+      const raw = readFileSync(SWITCH_REQ, "utf8").trim();
+      if (!raw) return;
+      const req = JSON.parse(raw);
+      if (!req || req.schema !== SWITCH_SCHEMA || !req.id) return;
+      if (req.id === lastReqId) return;
+      lastReqId = req.id;
+      void applySwitch(req, ctx);
+    } catch {
+      // Malformed request files stay on disk for fm-control to time out.
+    }
+  };
+  pi.on("session_start", (_event, ctx) => {
+    writeFileSync(SWITCH_READY, "ready\\n");
+    if (switchTimer) clearInterval(switchTimer);
+    switchTimer = setInterval(() => pollSwitch(ctx), 250);
+    pollSwitch(ctx);
+  });
+  pi.on("session_shutdown", () => {
+    if (switchTimer) {
+      clearInterval(switchTimer);
+      switchTimer = undefined;
+    }
+    try { unlinkSync(SWITCH_READY); } catch { /* already gone */ }
   });
 }
 EOF
@@ -4878,6 +4997,19 @@ preserve_relaunch_meta() {
   echo "tasktmp=$TASK_TMP"
   echo "model=${MODEL:-default}"
   echo "effort=${EFFORT:-default}"
+  # Original dispatch snapshot: live Pi switches update model=/effort= after
+  # confirmation and must not overwrite these. Written only on a fresh Pi-family
+  # spawn so a relaunch keeps the first profile via preserve_relaunch_meta.
+  if [ "$RELAUNCH" -eq 0 ]; then
+    case "$HARNESS" in
+      pi|pi-signed)
+        echo "dispatch_harness=$HARNESS"
+        echo "dispatch_model=${MODEL:-default}"
+        echo "dispatch_effort=${EFFORT:-default}"
+        [ -z "$WORKER_ACCOUNT_PROVIDER" ] || echo "dispatch_provider=$WORKER_ACCOUNT_PROVIDER"
+        ;;
+    esac
+  fi
   # The worker account pin, only when this home declares one, so an unpinned
   # task record stays byte-identical.
   [ -z "$WORKER_ACCOUNT" ] || echo "account=$WORKER_ACCOUNT_DECLARED"

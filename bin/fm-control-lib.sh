@@ -21,7 +21,8 @@
 #
 #   1. Verb allowlist. There is no arbitrary-text and no generic raw-key entry
 #      point on the control plane; a caller either names an allowlisted verb or
-#      is refused.
+#      is refused. `switch-model` is the Pi-family live session verb owned by
+#      bin/fm-pi-switch-lib.sh; a harness change remains `relaunch`.
 #   2. Per-harness control mechanics: which key interrupts a running turn, how
 #      many times it must be sent, whether the composer needs clearing after
 #      that key, which adapter-owned cancellation acknowledgement is observable,
@@ -50,12 +51,13 @@ fm_control_verbs() {
 interrupt
 exit
 relaunch
+switch-model
 EOF
 }
 
 fm_control_verb_allowed() {  # <verb>
   case "${1-}" in
-    interrupt|exit|relaunch) return 0 ;;
+    interrupt|exit|relaunch|switch-model) return 0 ;;
   esac
   return 1
 }
