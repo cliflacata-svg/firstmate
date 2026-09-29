@@ -1098,7 +1098,7 @@ It is off unless `TYPESAFE_API_KEY` is non-empty in the calling environment or t
 
 Off means one `dispatch-resolve: off` line on stderr, nothing on stdout, exit 0, and no network call, so firstmate dispatches exactly as it does without the tool.
 This section is the single owner of the tool's operator contract; the script header owns its exact flags and output lines, and "Crew dispatch profiles" above owns the declared rule and profile fields it applies.
-The same key also enables one bounded Jev checkpoint classification in `bin/fm-profile-switch.sh` for live Pi model switching; it sends the checkpoint kind and evidence text, never model IDs, honors `config/dispatch-never-send`, and uses the same key handling and fixed settings, while that script's header owns its decisions and output.
+The same key enables the bounded checkpoint classifier for [live Pi switching](../.agents/skills/pi-live-model-switch/SKILL.md); that playbook owns its decision procedure, and `bin/fm-profile-switch.sh` owns exact arguments and output.
 
 Rules come only from the effective home's `config/crew-dispatch.json`; `FM_CONFIG_OVERRIDE` selects the config directory for tests and specialized setup like the other scripts.
 

@@ -64,6 +64,11 @@
 #              not verified idle, the session handshake is missing, or the
 #              change is not confirmed. A busy worker is deferred until idle
 #              rather than interrupted. A harness change is `relaunch`.
+#              The destination harness/model/effort must match a profile in
+#              config/crew-dispatch.json with one unambiguous quota provider.
+#              Omitted model or effort inherits the current task record.
+#              Catalog and auth preflights use the recorded Pi-family adapter;
+#              the account pin must still match the account recorded at launch.
 #              bin/fm-pi-switch-lib.sh owns the request/ack protocol.
 #   relaunch   Transactionally replace the running agent with a new one, in the
 #              SAME worktree - and the same endpoint whenever that endpoint
@@ -146,6 +151,7 @@
 #   FM_CONTROL_SWITCH_IDLE_WAIT  wait for a verified idle Pi checkpoint (30)
 #   FM_CONTROL_SWITCH_ACK_WAIT   wait for the extension's matching ack (20)
 #   FM_CONTROL_SWITCH_READY_WAIT wait for the Pi session handshake (15)
+#   FM_CONTROL_SWITCH_POLL       live-switch poll interval (0.25)
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

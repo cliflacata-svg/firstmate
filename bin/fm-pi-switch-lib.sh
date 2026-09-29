@@ -6,9 +6,11 @@
 # --help on bin/fm-control.sh own caller-facing flags. This file owns:
 #   - the per-task request/ack/ready/history paths
 #   - request and ack JSON schema fm-pi-switch-model.v1
-#   - destination validation (catalog, effort, pin, auth, quota)
-#   - idle wait, request publication, ack correlation
+#   - catalog, effort-token, auth, and quota helpers
+#   - request publication and ack correlation
 #   - post-confirmation metadata and history writes
+# The control verb owns account-pin checks and idle waiting; the generated
+# Pi extension owns model-specific effort/context checks and turn admission.
 #
 # Ready JSON names busy_gen, a runtime incarnation UUID, session_id, and the
 # observed model/effort. Requests bind that incarnation and session, with an
@@ -25,14 +27,10 @@
 # RPC mode and does not replace the running harness. A harness change remains
 # bin/fm-control.sh relaunch.
 #
-# Environment knobs (seconds unless noted):
-#   FM_CONTROL_SWITCH_IDLE_WAIT   wait for a verified idle checkpoint (30)
-#   FM_CONTROL_SWITCH_ACK_WAIT    wait for a matching ack after publish (20)
-#   FM_CONTROL_SWITCH_READY_WAIT  wait for the session handshake (15)
-#   FM_CONTROL_SWITCH_POLL        poll interval (0.25)
-#   FM_PROFILE_SWITCH_COOLDOWN_SECS   selector cooldown (600)
-#   FM_PROFILE_SWITCH_MAX_PER_HOUR    selector retry bound (3)
-#   FM_PI_BIN                     Pi executable used for catalog/auth (pi)
+# Caller timeout knobs belong to fm-control.sh; selector bounds belong to
+# fm-profile-switch.sh. FM_PI_BIN selects the helper executable (default pi);
+# fm-control sets it from the task's recorded Pi-family harness so catalog
+# and authentication checks use the same adapter as launch.
 
 FM_PI_SWITCH_SCHEMA=fm-pi-switch-model.v1
 

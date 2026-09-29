@@ -28,6 +28,12 @@
 # candidate's capability, authentication, context and quota evidence.
 # No array ordering or effort rank is used as a capability classifier.
 # --selected and --decision use the same profile/decision tokens as output.
+# --history must name this task's switch log, even before it exists; a missing
+# file means zero attempts. Attempted, applied, refused, failed, partial,
+# timeout, and cancelled entries count, deduplicated by request for the bound.
+# FM_PROFILE_SWITCH_COOLDOWN_SECS sets the selector cooldown (default 600).
+# FM_PROFILE_SWITCH_MAX_PER_HOUR sets its hourly attempt bound (default 3).
+# These bounds apply to selection; the direct control verb does not run them.
 set -eu
 
 TYPESAFE_API_KEY_PRIVATE=${TYPESAFE_API_KEY:-}

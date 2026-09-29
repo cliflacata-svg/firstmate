@@ -60,7 +60,7 @@ Automatic switches among verified profiles on the existing accounts are authoriz
 - Honor the selector's cooldown and per-hour retry bound.
 
 Pass the worker's checkpoint line as `--evidence`.
-When `TYPESAFE_API_KEY` is configured, the selector makes one bounded Jev call per checkpoint, after cooldown and retry checks, and Jev classifies only among the decisions that checkpoint allows (`escalate`, `move-provider`, `reduce` with `--routine`, `stay`).
+When `TYPESAFE_API_KEY` is configured and no explicit `--decision` is supplied, the selector makes at most one bounded Jev call per checkpoint, after cooldown, retry, and never-send checks, and Jev classifies only among the decisions that checkpoint allows (`escalate`, `move-provider`, `reduce` with `--routine`, `stay`).
 Jev never sees or returns model IDs; `quota-array-dispatch` remains the authoritative selection procedure, and the direct control verb repeats the quota preflight against the configured destination profile.
 `jev=on` means Jev's answer was used; absent, ambiguous, error, and never-send outcomes hold for firstmate judgment unless an explicit bounded `--decision` is supplied.
-A pending request must reconcile before another switch or relaunch; after a confirmed dead worker with no readback, relaunch requires an explicit destination model and effort.
+A pending request must reconcile before another switch or relaunch; recovery without readback requires a confirmed dead worker or the control plane's endpoint-absence proof, plus an explicit destination model and effort.
