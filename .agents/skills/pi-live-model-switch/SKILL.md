@@ -47,7 +47,7 @@ Never disguise a relaunch as a live switch, and never switch the pane to RPC mod
    Pass the task's `state/<id>.model-switch.log` as the required `--history`, including before its first switch when the file does not exist.
    Use `--decision` when making the bounded checkpoint decision yourself.
 3. Drive the change with `FM_HOME=<home> bin/fm-control.sh <id> switch-model --model <provider/id> --effort <level>`.
-   A destination whose quota is unmeasured stays eligible but the direct verb refuses until you assess it and add `--confirm-unmeasured-quota`; the selector likewise holds, and measured exhaustion always refuses.
+   A destination whose quota is unmeasured stays eligible, but the selector holds and the direct verb refuses until you assess it and add `--confirm-unmeasured-quota` to both; the selector still applies cooldown and the retry bound first, and measured exhaustion always refuses.
 4. Trust only a `switched-model` line whose model and effort came from runtime readback.
 5. On `busy` deferral, wait; do not interrupt a tool operation to switch.
 6. On refusal, timeout, or crash, read the task record: `model=` is the confirmed readback or `unknown` pending reconciliation, `dispatch_*` is the original intake profile, and `state/<id>.model-switch.log` is the history a later relaunch must honor.

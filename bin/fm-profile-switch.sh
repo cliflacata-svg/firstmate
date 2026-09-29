@@ -13,6 +13,7 @@
 #                        [--decision <escalate|move-provider|reduce|stay>]
 #                        [--rule <zero-based-index|default>]
 #                        [--selected <harness:model:effort[:provider]>]
+#                        [--confirm-unmeasured-quota]
 #
 # Prints one action block:
 #   action=hold|live-switch|relaunch
@@ -34,6 +35,9 @@
 # FM_PROFILE_SWITCH_COOLDOWN_SECS sets the selector cooldown (default 600).
 # FM_PROFILE_SWITCH_MAX_PER_HOUR sets its hourly attempt bound (default 3).
 # These bounds apply to selection; the direct control verb does not run them.
+# An unmeasured destination quota holds unless --confirm-unmeasured-quota
+# records the supervisor's explicit confirmation; a confirmed live-switch must
+# pass the same flag to fm-control.sh switch-model. Measured exhaustion holds.
 set -eu
 
 TYPESAFE_API_KEY_PRIVATE=${TYPESAFE_API_KEY:-}
@@ -71,6 +75,7 @@ EVIDENCE=
 DECISION=
 RULE=
 SELECTED=
+CONFIRM_UNMEASURED=0
 
 want=
 for arg in "$@"; do
@@ -106,6 +111,7 @@ for arg in "$@"; do
     --rule) want=rule ;;
     --selected) want=selected ;;
     --routine) ROUTINE=1 ;;
+    --confirm-unmeasured-quota) CONFIRM_UNMEASURED=1 ;;
     *) echo "error: unexpected argument '$arg'" >&2; exit 2 ;;
   esac
 done
@@ -330,20 +336,26 @@ if [ "$decision" = move-provider ]; then
 fi
 
 quota_rc=0
-fm_pi_switch_quota_ready "$PICK_HARNESS" "$PICK_MODEL" "$PICK_PROVIDER" || quota_rc=$?
-if [ "$quota_rc" = 2 ]; then
-  emit hold "selected destination quota is unmeasured; supervisor must confirm before any switch"
+quota_note=
+quota_err=$(fm_pi_switch_quota_ready "$PICK_HARNESS" "$PICK_MODEL" "$PICK_PROVIDER" 2>&1) || quota_rc=$?
+if [ "$quota_rc" = 2 ] && [ "$CONFIRM_UNMEASURED" = 1 ]; then
+  quota_note="; unmeasured destination quota confirmed by supervisor"
+elif [ "$quota_rc" = 2 ]; then
+  printf '%s\n' "$quota_err" >&2
+  emit hold "selected destination quota is unmeasured; supervisor must confirm with --confirm-unmeasured-quota"
   exit 0
 elif [ "$quota_rc" != 0 ]; then
+  printf '%s\n' "$quota_err" >&2
   emit hold "selected destination failed quota preflight"
   exit 0
 fi
 
 if [ "$PICK_HARNESS" = "$CUR_HARNESS" ] && { [ "$PICK_HARNESS" = pi ] || [ "$PICK_HARNESS" = pi-signed ]; }; then
-  emit live-switch "checkpoint $CHECKPOINT decision $decision" \
+  [ -z "$quota_note" ] || quota_note="$quota_note; pass --confirm-unmeasured-quota to switch-model"
+  emit live-switch "checkpoint $CHECKPOINT decision $decision$quota_note" \
     "$PICK_HARNESS" "$PICK_MODEL" "$PICK_EFFORT" "$PICK_PROVIDER"
   exit 0
 fi
 
-emit relaunch "checkpoint $CHECKPOINT decision $decision requires a harness change" \
+emit relaunch "checkpoint $CHECKPOINT decision $decision requires a harness change$quota_note" \
   "$PICK_HARNESS" "$PICK_MODEL" "$PICK_EFFORT" "$PICK_PROVIDER"

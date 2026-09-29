@@ -150,16 +150,53 @@ test_quota_provider_move() {
 }
 
 test_unmeasured_quota_holds() {
-  local out rules="$TMP_ROOT/unmeasured-rules.json"
+  local out rules="$TMP_ROOT/unmeasured-rules.json" log="$TMP_ROOT/unmeasured-history.log" now
+  local unmeasured='{"schemaVersion":5,"providers":[]}'
+  local exhausted='{"schemaVersion":5,"providers":[{"provider":"codex","quotaSemantics":{"status":"known","effectiveAvailability":[{"scope":"all_models","status":"known","effectivePercentRemaining":0,"runway":{"status":"exhausted_now"}}]}}]}'
   jq '.rules[1].use += [{harness:"pi",model:"openai-codex/gpt-5.6-terra",effort:"high",provider:"codex"}]' "$RULES" > "$rules"
-  out=$(FM_TEST_QUOTA='{"schemaVersion":5,"providers":[]}' run_switch --rules "$rules" --checkpoint quota --decision move-provider --rule 0 \
+  local cross=(--rules "$rules" --checkpoint quota --decision move-provider --rule 0
     --current 'pi:zai/glm-5.3:low:zai' --selected 'pi:openai-codex/gpt-5.6-luna:low:codex')
-  assert_contains "$out" 'action=hold' 'unmeasured destination quota must not authorize an automatic switch'
-  assert_contains "$out" 'unmeasured' 'the hold must say the quota is unmeasured'
-  out=$(run_switch --rules "$rules" --checkpoint quota --decision move-provider --rule 0 \
-    --current 'pi:zai/glm-5.3:low:zai' --selected 'pi:openai-codex/gpt-5.6-luna:low:codex')
+  local same=(--rules "$rules" --checkpoint phase --routine --decision reduce --rule default
+    --current 'pi:zai/glm-5.3:high:zai' --selected 'pi:zai/glm-5.3:medium:zai')
+  local native=(--rules "$rules" --checkpoint complexity --decision escalate --rule 1
+    --current 'pi:zai/glm-5.3:low:zai' --selected 'grok:grok-4.6:high:')
+
+  out=$(FM_TEST_QUOTA="$unmeasured" run_switch "${cross[@]}")
+  assert_contains "$out" 'action=hold' 'unconfirmed unmeasured cross-provider destination must hold'
+  assert_contains "$out" '--confirm-unmeasured-quota' 'the hold must name the confirmation flag'
+  out=$(FM_TEST_QUOTA="$unmeasured" run_switch "${same[@]}")
+  assert_contains "$out" 'action=hold' 'unconfirmed unmeasured same-provider destination must hold'
+  out=$(FM_TEST_QUOTA="$unmeasured" run_switch "${native[@]}")
+  assert_contains "$out" 'action=hold' 'unconfirmed unmeasured native destination must hold'
+
+  out=$(FM_TEST_QUOTA="$unmeasured" run_switch "${cross[@]}" --confirm-unmeasured-quota)
+  assert_contains "$out" 'action=live-switch' 'confirmed unmeasured cross-provider destination must live-switch'
+  assert_contains "$out" 'model=openai-codex/gpt-5.6-luna' 'confirmation must keep the selected destination'
+  assert_contains "$out" 'pass --confirm-unmeasured-quota to switch-model' 'the direct verb needs the same confirmation'
+  out=$(FM_TEST_QUOTA="$unmeasured" run_switch "${same[@]}" --confirm-unmeasured-quota)
+  assert_contains "$out" 'action=live-switch' 'confirmed unmeasured same-provider destination must live-switch'
+  out=$(FM_TEST_QUOTA="$unmeasured" run_switch "${native[@]}" --confirm-unmeasured-quota)
+  assert_contains "$out" 'action=relaunch' 'confirmed unmeasured native destination must relaunch'
+  assert_contains "$out" 'harness=grok' 'confirmed relaunch must keep the native harness'
+  assert_not_contains "$out" 'switch-model' 'a relaunch must not direct the supervisor to the live switch verb'
+
+  out=$(FM_TEST_QUOTA="$exhausted" run_switch "${cross[@]}" --confirm-unmeasured-quota)
+  assert_contains "$out" 'action=hold' 'confirmation must not override measured exhaustion'
+  assert_contains "$out" 'failed quota preflight' 'measured exhaustion must stay a quota refusal'
+
+  now=$(date +%s)
+  printf 'ts=%s req=1 status=applied\n' "$now" > "$log"
+  out=$(FM_TEST_QUOTA="$unmeasured" run_switch "${cross[@]}" --history "$log" --confirm-unmeasured-quota)
+  assert_contains "$out" 'action=hold' 'confirmation must not bypass cooldown'
+  assert_contains "$out" cooldown 'confirmed unmeasured selection must report cooldown'
+  printf 'ts=%s req=2 status=failed\nts=%s req=3 status=timeout\n' "$now" "$now" >> "$log"
+  out=$(FM_PROFILE_SWITCH_COOLDOWN_SECS=0 FM_TEST_QUOTA="$unmeasured" run_switch "${cross[@]}" --history "$log" --confirm-unmeasured-quota)
+  assert_contains "$out" 'retry bound' 'confirmation must not bypass the hourly retry bound'
+
+  out=$(run_switch "${cross[@]}")
   assert_contains "$out" 'action=live-switch' 'measured available quota must still follow the normal path'
-  pass 'unmeasured destination quota holds while measured quota proceeds'
+  assert_not_contains "$out" 'unmeasured' 'measured quota must not claim an unmeasured confirmation'
+  pass 'unmeasured destination quota holds until confirmed, after cooldown and retry bounds'
 }
 
 test_pi_implicit_current_provider() {
