@@ -1233,9 +1233,10 @@ do_switch_model() {
         continue
         ;;
       applied)
-        [ "$ack_model" = "$dest_model" ] && [ -n "$ack_effort" ] \
-          && { [ "$dest_effort" = default ] || [ "$ack_effort" = "$dest_effort" ]; } \
-          || die "task $ID partial switch: requested selection not confirmed; metadata reconciled to readback"
+        if [ "$ack_model" != "$dest_model" ] || [ -z "$ack_effort" ] \
+          || { [ "$dest_effort" != default ] && [ "$ack_effort" != "$dest_effort" ]; }; then
+          die "task $ID partial switch: requested selection not confirmed; metadata reconciled to readback"
+        fi
         from_model=${current_model:-unknown}:${current_effort:-unknown}
         echo "switched-model $ID harness=$HARNESS from=$from_model model=$ack_model effort=$ack_effort provider=${ack_model%%/*} session=$ack_session backend=$BACKEND endpoint=$T worktree=$WT"
         return 0

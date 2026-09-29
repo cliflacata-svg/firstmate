@@ -498,7 +498,7 @@ SH
   chmod +x "$dir/fakebin/pi-signed"
   seed_idle "$dir" t1; seed_handshake "$dir" t1
   waiter=$(ack_when_requested "$dir" t1 applied openai-codex/gpt-5.6-luna low)
-  out=$(FM_PI_SWITCH_LISTING= FM_PI_SWITCH_AUTH_JSON= FM_CONTROL_SWITCH_ACK_WAIT=2 \
+  out=$(FM_PI_SWITCH_LISTING='' FM_PI_SWITCH_AUTH_JSON='' FM_CONTROL_SWITCH_ACK_WAIT=2 \
     run_control "$dir" t1 switch-model --model openai-codex/gpt-5.6-luna --effort low)
   rc=$?
   wait "$waiter" 2>/dev/null || true
