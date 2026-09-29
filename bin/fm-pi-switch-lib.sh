@@ -204,6 +204,7 @@ fm_pi_switch_reconcile() {
 
 fm_pi_switch_quota_ready() {
   local harness=$1 model=$2 provider=$3 snapshot result
+  # shellcheck source=bin/fm-quota-axi-lib.sh
   . "$(dirname "${BASH_SOURCE[0]}")/fm-quota-axi-lib.sh"
   if [ -z "$provider" ]; then
     provider=$(fm_quota_single_provider_for_harness "$harness") || {
