@@ -6,7 +6,7 @@
 #   fm-profile-switch.sh --checkpoint <complexity|stall|phase|quota>
 #                        --current <harness:model:effort[:provider]>
 #                        --rules <crew-dispatch.json>
-#                        [--history <model-switch.log>]
+#                        --history <task.model-switch.log>
 #                        [--routine]
 #                        [--candidates <harness:model:effort[:provider],...>]
 #                        [--evidence <checkpoint text>]
@@ -110,6 +110,10 @@ case "$CHECKPOINT" in
   *) echo "error: --checkpoint must be complexity, stall, phase, or quota" >&2; exit 2 ;;
 esac
 [ -n "$CURRENT" ] || { echo "error: --current is required" >&2; exit 2; }
+[ -n "$HISTORY" ] || { echo "error: --history must name the task switch history (even before its first switch)" >&2; exit 2; }
+if [ -e "$HISTORY" ] || [ -L "$HISTORY" ]; then
+  [ -f "$HISTORY" ] && [ -r "$HISTORY" ] || { echo "error: --history must be a readable file" >&2; exit 2; }
+fi
 [ -n "$RULES" ] && [ -f "$RULES" ] || { echo "error: --rules must be an existing crew-dispatch.json" >&2; exit 2; }
 
 CUR_HARNESS=${CURRENT%%:*}

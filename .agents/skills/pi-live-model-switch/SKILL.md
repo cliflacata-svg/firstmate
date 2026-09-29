@@ -44,6 +44,7 @@ Never disguise a relaunch as a live switch, and never switch the pane to RPC mod
 1. Reassess the matched rule against the remaining task and original `dispatch_*` snapshot; preserve its reasoning class unless the phase is explicitly routine and independently verifiable.
 2. Apply `quota-array-dispatch` to every alternative in that rule, including catalog, account, context, completion horizon and spendPriority evidence; supply the chosen rule and profile using the selector's `--rule` and `--selected` arguments.
    These arguments attest your assessment; they are not inferred from model names, effort ranks or array order.
+   Pass the task's `state/<id>.model-switch.log` as the required `--history`, including before its first switch when the file does not exist.
    Use `--decision` when making the bounded checkpoint decision yourself.
 3. Drive the change with `FM_HOME=<home> bin/fm-control.sh <id> switch-model --model <provider/id> --effort <level>`.
 4. Trust only a `switched-model` line whose model and effort came from runtime readback.

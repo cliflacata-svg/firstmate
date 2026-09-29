@@ -163,17 +163,15 @@ fm_pi_switch_append_history() {  # <state> <id> <line>
 }
 
 fm_pi_switch_confirm_meta() {
-  local meta=$1 model=${2:-unknown} effort=${3:-unknown} provider ts lock tmp rc=0
+  local meta=$1 model=${2:-unknown} effort=${3:-unknown} provider lock tmp rc=0
   case "$model" in */*) provider=${model%%/*} ;; *) provider=unknown ;; esac
-  ts=$(date +%s)
   lock=$(fm_meta_lock_path "$meta") || return 1
   fm_lock_acquire_wait "$lock" || return 1
   tmp=$(mktemp "${meta}.XXXXXX") || { fm_lock_release "$lock"; return 1; }
-  awk -F= -v model="$model" -v effort="$effort" -v provider="$provider" -v ts="$ts" '
-    $1 ~ /^(model|effort|account_provider|model_runtime|model_runtime_ts)$/ {next}
+  awk -F= -v model="$model" -v effort="$effort" -v provider="$provider" '
+    $1 ~ /^(model|effort|account_provider)$/ {next}
     {print}
-    END {print "model=" model; print "effort=" effort; print "account_provider=" provider;
-         print "model_runtime=" model; print "model_runtime_ts=" ts}
+    END {print "model=" model; print "effort=" effort; print "account_provider=" provider}
   ' "$meta" > "$tmp" && mv -f "$tmp" "$meta" || rc=1
   rm -f "$tmp"
   fm_lock_release "$lock" || rc=1

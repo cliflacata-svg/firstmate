@@ -366,7 +366,9 @@ test_restart_recovery_reads_last_confirmed_profile() {
   fm_pi_switch_confirm_meta "$meta" openai-codex/gpt-5.6-luna medium openai-codex
   [ "$(fm_meta_get "$meta" model)" = openai-codex/gpt-5.6-luna ] || fail "confirmed model missing"
   [ "$(fm_meta_get "$meta" dispatch_model)" = zai/glm-5.3 ] || fail "dispatch snapshot missing after confirm"
-  [ "$(fm_meta_get "$meta" model_runtime)" = openai-codex/gpt-5.6-luna ] || fail "model_runtime missing"
+  [ "$(fm_meta_get "$meta" effort)" = medium ] || fail "confirmed effort missing"
+  [ -z "$(fm_meta_get "$meta" model_runtime)" ] || fail "redundant runtime model was published"
+  [ -z "$(fm_meta_get "$meta" model_runtime_ts)" ] || fail "redundant runtime timestamp was published"
   pass "recovery reads the last confirmed profile beside the original dispatch snapshot"
 }
 

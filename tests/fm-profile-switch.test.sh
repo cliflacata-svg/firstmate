@@ -40,7 +40,7 @@ EMPTY_HOME="$TMP_ROOT/empty-home"
 mkdir -p "$EMPTY_HOME"
 
 run_switch() {
-  env -u TYPESAFE_API_KEY FM_HOME="$EMPTY_HOME" "$SWITCH" --rules "$RULES" "$@" 2>&1
+  env -u TYPESAFE_API_KEY FM_HOME="$EMPTY_HOME" "$SWITCH" --rules "$RULES" --history "$EMPTY_HOME/state/task.model-switch.log" "$@" 2>&1
 }
 
 FAKEBIN="$TMP_ROOT/fakebin"
@@ -68,7 +68,31 @@ run_jev() {  # <response-json> <args...>
   rm -f "$JEV_LOG"/*
   PATH="$FAKEBIN:$PATH" JEV_LOG="$JEV_LOG" FAKE_JEV_RESPONSE="$response" \
     TYPESAFE_API_KEY=test-key FM_HOME="$EMPTY_HOME" \
-    "$SWITCH" --rules "$RULES" "$@" 2>&1
+    "$SWITCH" --rules "$RULES" --history "$EMPTY_HOME/state/task.model-switch.log" "$@" 2>&1
+}
+
+test_required_history() {
+  local out rc history="$EMPTY_HOME/state/task.model-switch.log"
+  mkdir -p "$EMPTY_HOME/state"
+  printf 'ts=%s req=1 status=failed\n' "$(date +%s)" > "$history"
+  rm -f "$JEV_LOG/request"
+  out=$(PATH="$FAKEBIN:$PATH" TYPESAFE_API_KEY=test-key FM_HOME="$EMPTY_HOME" \
+    "$SWITCH" --rules "$RULES" --checkpoint quota --decision move-provider --rule 0 \
+    --current 'pi:zai/glm-5.3:low:zai' --selected 'pi:openai-codex/gpt-5.6-luna:low:codex' 2>&1)
+  rc=$?
+  expect_code 2 "$rc" 'omitted history must refuse selection even when task history exists'
+  assert_contains "$out" '--history' 'refusal must identify the required task history'
+  [ ! -e "$JEV_LOG/request" ] || fail 'missing history must refuse before Jev'
+  out=$(run_switch --checkpoint quota --decision move-provider --rule 0 \
+    --current 'pi:zai/glm-5.3:low:zai' --selected 'pi:openai-codex/gpt-5.6-luna:low:codex')
+  assert_contains "$out" cooldown 'the supplied task history must enforce cooldown'
+  rm "$history"
+  out=$(run_switch --checkpoint quota --decision move-provider --rule 0 \
+    --current 'pi:zai/glm-5.3:low:zai' --selected 'pi:openai-codex/gpt-5.6-luna:low:codex')
+  assert_contains "$out" 'action=live-switch' 'a named but absent history must allow the first switch'
+  out=$(run_switch --history "$EMPTY_HOME/state" --checkpoint quota --current 'pi:zai/glm-5.3:low:zai')
+  expect_code 2 "$?" 'a directory must not count as absent history'
+  pass 'selection requires task history and preserves first-checkpoint behavior'
 }
 
 test_bounded_selection() {
@@ -161,3 +185,5 @@ test_history_bounds
 test_jev_bounds
 
 test_native_provider_quota
+
+test_required_history
