@@ -149,6 +149,19 @@ test_quota_provider_move() {
   pass 'quota moves require a different provider for live switches and relaunches'
 }
 
+test_unmeasured_quota_holds() {
+  local out rules="$TMP_ROOT/unmeasured-rules.json"
+  jq '.rules[1].use += [{harness:"pi",model:"openai-codex/gpt-5.6-terra",effort:"high",provider:"codex"}]' "$RULES" > "$rules"
+  out=$(FM_TEST_QUOTA='{"schemaVersion":5,"providers":[]}' run_switch --rules "$rules" --checkpoint quota --decision move-provider --rule 0 \
+    --current 'pi:zai/glm-5.3:low:zai' --selected 'pi:openai-codex/gpt-5.6-luna:low:codex')
+  assert_contains "$out" 'action=hold' 'unmeasured destination quota must not authorize an automatic switch'
+  assert_contains "$out" 'unmeasured' 'the hold must say the quota is unmeasured'
+  out=$(run_switch --rules "$rules" --checkpoint quota --decision move-provider --rule 0 \
+    --current 'pi:zai/glm-5.3:low:zai' --selected 'pi:openai-codex/gpt-5.6-luna:low:codex')
+  assert_contains "$out" 'action=live-switch' 'measured available quota must still follow the normal path'
+  pass 'unmeasured destination quota holds while measured quota proceeds'
+}
+
 test_pi_implicit_current_provider() {
   local out harness rules selected current
   local quota='{"schemaVersion":5,"providers":[{"provider":"codex","quotaSemantics":{"status":"known","effectiveAvailability":[{"scope":"all_models","status":"known","effectivePercentRemaining":75,"runway":{"status":"through_reset"}}]}}]}'
@@ -235,13 +248,14 @@ test_native_provider_quota() {
 cat > "$FAKEBIN/quota-axi" <<'SH'
 #!/usr/bin/env bash
 if [ -n "${FM_TEST_QUOTA:-}" ]; then printf '%s\n' "$FM_TEST_QUOTA";
-else printf '%s\n' '{"schemaVersion":5,"providers":[]}'; fi
+else printf '%s\n' '{"schemaVersion":5,"providers":[{"provider":"codex","quotaSemantics":{"status":"known","effectiveAvailability":[{"scope":"all_models","status":"known","effectivePercentRemaining":80,"runway":{"status":"through_reset"}}]}},{"provider":"zai","quotaSemantics":{"status":"known","effectiveAvailability":[{"scope":"all_models","status":"known","effectivePercentRemaining":80,"runway":{"status":"through_reset"}}]}},{"provider":"xai","quotaSemantics":{"status":"known","effectiveAvailability":[{"scope":"all_models","status":"known","effectivePercentRemaining":80,"runway":{"status":"through_reset"}}]}},{"provider":"claude","quotaSemantics":{"status":"known","effectiveAvailability":[{"scope":"all_models","status":"known","effectivePercentRemaining":80,"runway":{"status":"through_reset"}}]}},{"provider":"grok","quotaSemantics":{"status":"known","effectiveAvailability":[{"scope":"all_models","status":"known","effectivePercentRemaining":80,"runway":{"status":"through_reset"}}]}}]}'; fi
 SH
 chmod +x "$FAKEBIN/quota-axi"
 export PATH="$FAKEBIN:$PATH"
 test_bounded_selection
 test_quota_provider_move
 test_pi_implicit_current_provider
+test_unmeasured_quota_holds
 test_history_bounds
 test_jev_bounds
 

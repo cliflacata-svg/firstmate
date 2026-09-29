@@ -71,7 +71,7 @@ SH
   cat > "$fb/quota-axi" <<'SH'
 #!/usr/bin/env bash
 if [ -n "${FM_TEST_QUOTA:-}" ]; then printf '%s\n' "$FM_TEST_QUOTA";
-else printf '%s\n' '{"schemaVersion":5,"providers":[]}'; fi
+else printf '%s\n' '{"schemaVersion":5,"providers":[{"provider":"codex","quotaSemantics":{"status":"known","effectiveAvailability":[{"scope":"all_models","status":"known","effectivePercentRemaining":80,"runway":{"status":"through_reset"}}]}},{"provider":"zai","quotaSemantics":{"status":"known","effectiveAvailability":[{"scope":"all_models","status":"known","effectivePercentRemaining":80,"runway":{"status":"through_reset"}}]}},{"provider":"xai","quotaSemantics":{"status":"known","effectiveAvailability":[{"scope":"all_models","status":"known","effectivePercentRemaining":80,"runway":{"status":"through_reset"}}]}},{"provider":"claude","quotaSemantics":{"status":"known","effectiveAvailability":[{"scope":"all_models","status":"known","effectivePercentRemaining":80,"runway":{"status":"through_reset"}}]}}]}'; fi
 SH
   cat > "$fb/pi" <<'SH'
 #!/usr/bin/env bash
@@ -439,6 +439,34 @@ test_exhausted_quota_refuses() {
   pass 'direct switch refuses exhausted quota before publication'
 }
 
+test_unmeasured_quota_needs_explicit_confirmation() {
+  local dir out rc listing auth waiter meta
+  local unmeasured='{"schemaVersion":5,"providers":[]}'
+  dir=$(new_case unmeasured)
+  add_task "$dir" t1 pi
+  printf pi > "$dir/fake/command"
+  listing=$(write_listing "$dir"); auth=$(write_auth "$dir")
+  seed_idle "$dir" t1; seed_handshake "$dir" t1
+  out=$(FM_TEST_QUOTA="$unmeasured" FM_PI_SWITCH_LISTING="$listing" FM_PI_SWITCH_AUTH_JSON="$auth"     run_control "$dir" t1 switch-model --model openai-codex/gpt-5.6-luna)
+  rc=$?
+  expect_code 1 "$rc" 'unmeasured quota must not silently authorize a direct switch'
+  assert_contains "$out" 'explicit supervisor confirmation required' 'refusal must ask for supervisor confirmation'
+  [ ! -e "$dir/home/state/t1.model-switch.req" ] || fail 'unconfirmed unmeasured route published a request'
+  meta="$dir/home/state/t1.meta"
+  [ "$(fm_meta_get "$meta" model)" = zai/glm-5.3 ] || fail 'refusal must leave the confirmed model untouched'
+  waiter=$(ack_when_requested "$dir" t1 applied openai-codex/gpt-5.6-luna low)
+  out=$(FM_TEST_QUOTA="$unmeasured" FM_PI_SWITCH_LISTING="$listing" FM_PI_SWITCH_AUTH_JSON="$auth"     FM_CONTROL_SWITCH_ACK_WAIT=2 \
+    run_control "$dir" t1 switch-model --model openai-codex/gpt-5.6-luna --confirm-unmeasured-quota)
+  rc=$?
+  wait "$waiter" 2>/dev/null || true
+  expect_code 0 "$rc" "explicit confirmation must allow an unmeasured eligible destination: $out"
+  [ "$(fm_meta_get "$meta" model)" = openai-codex/gpt-5.6-luna ] || fail 'confirmed unmeasured switch was not recorded'
+  out=$(run_control "$dir" t1 relaunch --confirm-unmeasured-quota --note x); rc=$?
+  expect_code 1 "$rc" '--confirm-unmeasured-quota must be rejected outside switch-model'
+  assert_contains "$out" "applies to 'switch-model' only" 'flag scope refusal must be explicit'
+  pass 'unmeasured quota requires explicit confirmation and known exhaustion still refuses'
+}
+
 test_unconfirmed_selection() {
   local dir out listing auth waiter meta
   dir=$(new_case unknown)
@@ -516,6 +544,7 @@ test_metadata_lock_preserves_concurrent_fields
 
 test_timeout_and_late_ack
 test_exhausted_quota_refuses
+test_unmeasured_quota_needs_explicit_confirmation
 
 test_switch_model_is_a_control_verb
 test_non_pi_harness_is_refused

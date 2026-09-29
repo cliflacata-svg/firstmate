@@ -202,8 +202,11 @@ fm_pi_switch_reconcile() {
   rm -f "$path"
 }
 
+# fm_pi_switch_quota_ready <harness> <model> <provider> [confirmed-unmeasured]
+# Measured exhaustion refuses (1). Unmeasured quota stays an eligible
+# candidate but refuses (2) unless the supervisor passed explicit confirmation.
 fm_pi_switch_quota_ready() {
-  local harness=$1 model=$2 provider=$3 snapshot result
+  local harness=$1 model=$2 provider=$3 confirmed=${4:-0} snapshot result
   # shellcheck source=bin/fm-quota-axi-lib.sh
   . "$(dirname "${BASH_SOURCE[0]}")/fm-quota-axi-lib.sh"
   if [ -z "$provider" ]; then
@@ -226,7 +229,13 @@ fm_pi_switch_quota_ready() {
     else "available" end') || return 1
   case "$result" in
     exhausted) echo "error: $provider quota exhausted for $model" >&2; return 1 ;;
-    unknown) echo "quota: $provider/$model unmeasured; supervisor assessment required" >&2 ;;
+    unknown)
+      if [ "$confirmed" != 1 ]; then
+        echo "error: $provider/$model quota is unmeasured; explicit supervisor confirmation required (--confirm-unmeasured-quota)" >&2
+        return 2
+      fi
+      echo "quota: $provider/$model unmeasured; proceeding on explicit supervisor confirmation" >&2
+      ;;
   esac
 }
 

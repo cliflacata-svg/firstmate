@@ -329,10 +329,15 @@ if [ "$decision" = move-provider ]; then
   fi
 fi
 
-fm_pi_switch_quota_ready "$PICK_HARNESS" "$PICK_MODEL" "$PICK_PROVIDER" || {
+quota_rc=0
+fm_pi_switch_quota_ready "$PICK_HARNESS" "$PICK_MODEL" "$PICK_PROVIDER" || quota_rc=$?
+if [ "$quota_rc" = 2 ]; then
+  emit hold "selected destination quota is unmeasured; supervisor must confirm before any switch"
+  exit 0
+elif [ "$quota_rc" != 0 ]; then
   emit hold "selected destination failed quota preflight"
   exit 0
-}
+fi
 
 if [ "$PICK_HARNESS" = "$CUR_HARNESS" ] && { [ "$PICK_HARNESS" = pi ] || [ "$PICK_HARNESS" = pi-signed ]; }; then
   emit live-switch "checkpoint $CHECKPOINT decision $decision" \

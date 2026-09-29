@@ -9,6 +9,7 @@
 #                                         (--note <text> | --note-file <path>)
 #        fm-control.sh <task-id> switch-model [--model <provider/id>]
 #                                            [--effort <level>]
+#                                            [--confirm-unmeasured-quota]
 #
 # Why this exists, and how it differs from fm-send.sh. bin/fm-send.sh is the
 # DATA plane: conversational text for the agent to read, always routing-marked
@@ -67,6 +68,9 @@
 #              The destination harness/model/effort must match a profile in
 #              config/crew-dispatch.json with one unambiguous quota provider.
 #              Omitted model or effort inherits the current task record.
+#              Measured exhausted destination quota refuses. Unmeasured quota
+#              keeps the destination eligible but refuses unless the
+#              supervisor passes --confirm-unmeasured-quota after assessing it.
 #              Catalog and auth preflights use the recorded Pi-family adapter;
 #              the account pin must still match the account recorded at launch.
 #              bin/fm-pi-switch-lib.sh owns the request/ack protocol.
@@ -266,6 +270,7 @@ NEW_EFFORT=
 HARNESS_SET=0
 MODEL_SET=0
 EFFORT_SET=0
+CONFIRM_UNMEASURED=0
 NOTE=
 NOTE_SET=0
 control_want_value=
@@ -295,6 +300,7 @@ for control_arg in "$@"; do
     --model=*) NEW_MODEL=${control_arg#--model=}; MODEL_SET=1 ;;
     --effort) control_want_value=effort ;;
     --effort=*) NEW_EFFORT=${control_arg#--effort=}; EFFORT_SET=1 ;;
+    --confirm-unmeasured-quota) CONFIRM_UNMEASURED=1 ;;
     --note) control_want_value=note ;;
     --note=*) NOTE=${control_arg#--note=}; NOTE_SET=1 ;;
     --note-file) control_want_value=note_file ;;
@@ -311,6 +317,8 @@ if [ -n "$control_want_value" ]; then
   die "--$control_want_value requires a value"
 fi
 
+[ "$CONFIRM_UNMEASURED" = 0 ] || [ "$VERB" = switch-model ] \
+  || die "--confirm-unmeasured-quota applies to 'switch-model' only"
 case "$VERB" in
   relaunch) ;;
   switch-model)
@@ -1191,7 +1199,7 @@ do_switch_model() {
     if length == 1 and (.[0] | type) == "string" and (.[0] | length) > 0 then .[0]
     else error("destination needs a configured profile with a quota provider") end
   ' "$CONFIG/crew-dispatch.json") || die "destination is not a configured verified profile; reassess with quota-array-dispatch"
-  fm_pi_switch_quota_ready "$HARNESS" "$dest_model" "$quota_provider" || die "destination quota preflight failed"
+  fm_pi_switch_quota_ready "$HARNESS" "$dest_model" "$quota_provider" "$CONFIRM_UNMEASURED" || die "destination quota preflight failed"
 
   ready_path=$(fm_pi_switch_ready_path "$STATE" "$ID")
   fm_pi_switch_wait_file "$ready_path" "$SWITCH_READY_WAIT" "$SWITCH_POLL" \
