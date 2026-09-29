@@ -307,7 +307,21 @@ if [ "$decision" = move-provider ]; then
   # shellcheck source=bin/fm-quota-axi-lib.sh
   . "$SCRIPT_DIR/fm-quota-axi-lib.sh"
   IFS=: read -r _cur_harness _cur_model _cur_effort current_provider <<< "$CURRENT"
-  current_provider=${current_provider:-$(fm_quota_single_provider_for_harness "$CUR_HARNESS" || true)}
+  if [ -z "$current_provider" ]; then
+    case "$CUR_HARNESS" in
+      pi|pi-signed)
+        if parsed_current=$(fm_pi_switch_parse_model "$_cur_model"); then
+          current_provider=${parsed_current%%$'\t'*}
+          case "$current_provider" in
+            openai-codex) current_provider=codex ;;
+            xai) current_provider=grok ;;
+            anthropic) current_provider=claude ;;
+          esac
+        fi
+        ;;
+      *) current_provider=$(fm_quota_single_provider_for_harness "$CUR_HARNESS" || true) ;;
+    esac
+  fi
   selected_provider=${PICK_PROVIDER:-$(fm_quota_single_provider_for_harness "$PICK_HARNESS" || true)}
   if [ -z "$current_provider" ] || [ -z "$selected_provider" ] || [ "$current_provider" = "$selected_provider" ]; then
     emit hold "quota move requires an eligible replacement on a different provider"

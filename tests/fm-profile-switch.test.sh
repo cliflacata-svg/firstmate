@@ -149,6 +149,36 @@ test_quota_provider_move() {
   pass 'quota moves require a different provider for live switches and relaunches'
 }
 
+test_pi_implicit_current_provider() {
+  local out harness rules selected current
+  local quota='{"schemaVersion":5,"providers":[{"provider":"codex","quotaSemantics":{"status":"known","effectiveAvailability":[{"scope":"all_models","status":"known","effectivePercentRemaining":75,"runway":{"status":"through_reset"}}]}}]}'
+  for harness in pi pi-signed; do
+    rules="$TMP_ROOT/$harness-rules.json"
+    jq --arg h "$harness" 'walk(if type == "object" and .harness? == "pi" then .harness = $h else . end)' "$RULES" > "$rules"
+    selected="$harness:openai-codex/gpt-5.6-luna:low:codex"
+    for current in "$harness:zai/glm-5.3:low" "$harness:zai/glm-5.3:low:"; do
+      out=$(FM_TEST_QUOTA="$quota" run_switch --rules "$rules" --checkpoint quota --decision move-provider --rule 0 \
+        --current "$current" --selected "$selected")
+      assert_contains "$out" 'action=live-switch' 'omitted Pi current provider must allow a viable different-provider replacement'
+      assert_contains "$out" 'model=openai-codex/gpt-5.6-luna' 'the eligible selected destination must be retained'
+      out=$(FM_TEST_QUOTA="$(jq '.providers[0].quotaSemantics.effectiveAvailability[0].effectivePercentRemaining = 0' <<< "$quota")" \
+        run_switch --rules "$rules" --checkpoint quota --decision move-provider --rule 0 \
+        --current "$current" --selected "$selected")
+      assert_contains "$out" 'selected destination failed quota preflight' 'inferred current provider must not bypass destination exhaustion'
+    done
+    for selected in "$harness:openai-codex/gpt-5.6-sol:xhigh:codex" 'grok:grok-4.6:high:'; do
+      case "$selected" in grok:*) current="$harness:xai/grok-4.6:xhigh" ;; *) current="$harness:openai-codex/gpt-5.6-sol:xhigh" ;; esac
+      out=$(run_switch --rules "$rules" --checkpoint quota --decision move-provider --rule 1 \
+        --current "$current" --selected "$selected")
+      assert_contains "$out" 'action=hold' 'qualified Pi provider aliases must still reject the constrained provider'
+    done
+    out=$(run_switch --rules "$rules" --checkpoint quota --decision move-provider --rule default \
+      --current "$harness:zai/glm-5.3:low" --selected "$harness:zai/glm-5.3:medium:zai")
+    assert_contains "$out" 'action=hold' 'no different-provider alternative must still hold'
+  done
+  pass 'Pi and Pi-signed infer omitted current providers without bypassing quota or provider constraints'
+}
+
 test_history_bounds() {
   local out log now
   log="$TMP_ROOT/history.log"
@@ -211,6 +241,7 @@ chmod +x "$FAKEBIN/quota-axi"
 export PATH="$FAKEBIN:$PATH"
 test_bounded_selection
 test_quota_provider_move
+test_pi_implicit_current_provider
 test_history_bounds
 test_jev_bounds
 
