@@ -1,0 +1,9 @@
+ok - bounded selection preserves rule eligibility and parses all candidates
+ok - quota moves require a different provider for live switches and relaunches
+ok - Pi and Pi-signed infer omitted current providers without bypassing quota or provider constraints
+ok - unmeasured destination quota holds until confirmed, after cooldown and retry bounds
+ok - failed attempts enforce cooldown and retry bounds
+ok - Jev remains bounded and every uncertain outcome holds
+ok - native profiles without provider cannot bypass exhausted quota
+ok - selection requires task history and preserves first-checkpoint behavior
+rc=0

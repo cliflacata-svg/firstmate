@@ -1,0 +1,5 @@
+spawned smoke-pi-switch-638503 harness=pi kind=scout window=firstmate:fm-smoke-pi-switch-638503 worktree=/tmp/fm-pi-switch-live.Lbl5fQ/.treehouse/smoke-f4ea27/1/smoke
+switched-model smoke-pi-switch-638503 harness=pi from=zai/glm-5.3:low model=zai/glm-5.3 effort=high provider=zai session=01a0ed15-f7b8-743f-8095-9aad0b637fa5 backend=tmux endpoint=firstmate:fm-smoke-pi-switch-638503 worktree=/tmp/fm-pi-switch-live.Lbl5fQ/.treehouse/smoke-f4ea27/1/smoke
+switched-model smoke-pi-switch-638503 harness=pi from=zai/glm-5.3:high model=openai-codex/gpt-5.6-luna effort=low provider=openai-codex session=01a0ed15-f7b8-743f-8095-9aad0b637fa5 backend=tmux endpoint=firstmate:fm-smoke-pi-switch-638503 worktree=/tmp/fm-pi-switch-live.Lbl5fQ/.treehouse/smoke-f4ea27/1/smoke
+ok - Pi live switches preserved task, runtime session, worktree, edit and tool-free conversation recall
+rc=0

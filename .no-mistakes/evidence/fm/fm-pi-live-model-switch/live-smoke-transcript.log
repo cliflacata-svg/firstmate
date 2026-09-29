@@ -1,0 +1,105 @@
+spawned smoke-pi-switch-619632 harness=pi kind=scout window=firstmate:fm-smoke-pi-switch-619632 worktree=/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3PGTVSSDS75000JYAE03R8Y/.pi-switch-live.MAKMJO/.treehouse/smoke-400b5e/1/smoke
+
+### real quota-axi bounds for the providers under test
+{"provider":"codex","bounds":[{"scope":"all_models","status":"known","effectivePercentRemaining":66,"runway":"projected_exhaustion"}]}
+{"provider":"cursor","bounds":[]}
+{"provider":"grok","bounds":[{"scope":"all_products","status":"known","effectivePercentRemaining":0,"runway":"exhausted_now"},{"scope":"product:grok_build","status":"known","effectivePercentRemaining":0,"runway":"exhausted_now"}]}
+{"provider":"zai","bounds":[{"scope":"all_models","status":"known","effectivePercentRemaining":56,"runway":"projected_exhaustion"}]}
+
+### SELECTOR: quota move to unmeasured nous, unconfirmed
+error: nous/nous/openai/gpt-5.5 quota is unmeasured; explicit supervisor confirmation required (--confirm-unmeasured-quota)
+action=hold
+jev=off
+reason=selected destination quota is unmeasured; supervisor must confirm with --confirm-unmeasured-quota
+
+### SELECTOR: quota move to unmeasured nous, confirmed
+action=live-switch
+jev=off
+reason=checkpoint quota decision move-provider; unmeasured destination quota confirmed by supervisor; pass --confirm-unmeasured-quota to switch-model
+harness=pi
+model=nous/openai/gpt-5.5
+effort=low
+provider=nous
+
+### SELECTOR: native cursor relaunch (unmeasured), unconfirmed then confirmed
+error: cursor/gpt-5.5 quota is unmeasured; explicit supervisor confirmation required (--confirm-unmeasured-quota)
+action=hold
+jev=off
+reason=selected destination quota is unmeasured; supervisor must confirm with --confirm-unmeasured-quota
+action=relaunch
+jev=off
+reason=checkpoint complexity decision escalate requires a harness change; unmeasured destination quota confirmed by supervisor
+harness=cursor
+model=gpt-5.5
+effort=high
+provider=cursor
+
+### SELECTOR: exhausted grok with confirmation flag
+error: grok quota exhausted for xai/grok-4.6
+action=hold
+jev=off
+reason=selected destination failed quota preflight
+
+### SELECTOR: measured codex luna, no flag
+action=live-switch
+jev=off
+reason=checkpoint quota decision move-provider
+harness=pi
+model=openai-codex/gpt-5.6-luna
+effort=low
+provider=codex
+
+### DIRECT VERB on live worker: unmeasured nous without confirmation
+error: nous/nous/openai/gpt-5.5 quota is unmeasured; explicit supervisor confirmation required (--confirm-unmeasured-quota)
+error: destination quota preflight failed
+rc=1
+meta model after refusal: zai/glm-5.3 effort=low
+
+### DIRECT VERB on live worker: exhausted xai WITH confirmation flag
+error: grok quota exhausted for xai/grok-4.6
+error: destination quota preflight failed
+rc=1
+
+### DIRECT VERB: flag rejected outside switch-model
+error: --confirm-unmeasured-quota applies to 'switch-model' only
+rc=1
+tmux pane (worker) before measured switches:
+ - No other files changed; steering inbox smoke-pi-switch-619632.inbox has no
+   messages to acknowledge yet.
+
+
+ Remember this codeword for a later question: 708001ae255eb84ee075246dac935874.
+ Reply only READY.
+
+
+ READY
+
+────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────
+~/.no-mistakes/worktrees/be2e8740e3ea/01M3PGTVSSDS75000JYAE03R8Y/.pi-switch-l...
+↑24k ↓315 R36k CH0.0% $0.044 1.1%/1.0M (auto)                (zai) glm-5.3 • low
+
+### MEASURED switches (no flag): same-provider effort high, then cross-provider codex luna
+switched-model smoke-pi-switch-619632 harness=pi from=zai/glm-5.3:low model=zai/glm-5.3 effort=high provider=zai session=01a0ed12-7a95-7684-8359-124af8d2c7c7 backend=tmux endpoint=firstmate:fm-smoke-pi-switch-619632 worktree=/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3PGTVSSDS75000JYAE03R8Y/.pi-switch-live.MAKMJO/.treehouse/smoke-400b5e/1/smoke
+switched-model smoke-pi-switch-619632 harness=pi from=zai/glm-5.3:high model=openai-codex/gpt-5.6-luna effort=low provider=openai-codex session=01a0ed12-7a95-7684-8359-124af8d2c7c7 backend=tmux endpoint=firstmate:fm-smoke-pi-switch-619632 worktree=/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3PGTVSSDS75000JYAE03R8Y/.pi-switch-live.MAKMJO/.treehouse/smoke-400b5e/1/smoke
+
+### post-switch metadata and history
+endpoint_task_id=smoke-pi-switch-619632
+worktree=/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3PGTVSSDS75000JYAE03R8Y/.pi-switch-live.MAKMJO/.treehouse/smoke-400b5e/1/smoke
+dispatch_model=zai/glm-5.3
+dispatch_effort=low
+model=openai-codex/gpt-5.6-luna
+effort=low
+ts=1790683835 req=1790683835.623274.4769 from=zai/glm-5.3:low to=zai/glm-5.3:high status=attempted
+ts=1790683835 req=1790683835.623274.4769 to=zai/glm-5.3:high status=applied
+ts=1790683841 req=1790683841.623586.14888 from=zai/glm-5.3:high to=openai-codex/gpt-5.6-luna:low status=attempted
+ts=1790683841 req=1790683841.623586.14888 to=openai-codex/gpt-5.6-luna:low status=applied
+{"ok":true,"session_id":"01a0ed12-7a95-7684-8359-124af8d2c7c7","tools":[]}{"ok":true,"session_id":"01a0ed12-7a95-7684-8359-124af8d2c7c7","tools":[]}
+
+### SELECTOR after real switches: confirmed unmeasured must still hit cooldown
+action=hold
+jev=off
+reason=cooldown 597s remaining
+ok - Pi live switches preserved task, runtime session, worktree, edit and tool-free conversation recall
+rc=0
