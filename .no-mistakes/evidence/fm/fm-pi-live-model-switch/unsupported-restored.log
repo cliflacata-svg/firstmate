@@ -1,0 +1,2 @@
+fm-gate-refuse: gate agent lifecycle permitted only against lab home /home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N775G45K6PQDRGGWM3BRCS/.pi-switch-live.OWHm4s
+error: another lifecycle action is already running for task smoke-pi-switch-2323601

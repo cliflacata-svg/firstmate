@@ -1,0 +1,4 @@
+spawned smoke-pi-switch-2427612 harness=pi kind=scout window=firstmate:fm-smoke-pi-switch-2427612 worktree=/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N775G45K6PQDRGGWM3BRCS/.pi-switch-live.1rRWa4/.treehouse/smoke-54cab2/1/smoke
+error: task smoke-pi-switch-2427612 is not at a verified idle checkpoint (busy=busy pi-ext); live model switch will not interrupt an active tool operation
+LIVE BUSY: switch deferred; active sleep tool completed; profile unchanged; worker continued to edit and finish
+ok - real active tool survived busy-switch refusal

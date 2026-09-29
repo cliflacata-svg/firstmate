@@ -1,0 +1,15 @@
+unconfigured Jev holds: exit=0
+action=hold
+jev=off
+reason=firstmate judgment required: supply --decision after reviewing checkpoint evidence
+
+native Grok exhausted quota: exit=0
+error: grok quota exhausted for grok-4.6
+action=hold
+jev=off
+reason=selected destination failed quota preflight
+
+ineligible selection: exit=1
+jq: error (at /home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N775G45K6PQDRGGWM3BRCS/.selector-live.j3pcb64p/rules.json:0): selection outside candidates
+error: invalid matched-rule selection
+

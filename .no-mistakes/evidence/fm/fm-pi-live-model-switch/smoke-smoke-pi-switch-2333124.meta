@@ -1,0 +1,15 @@
+window=firstmate:fm-smoke-pi-switch-2333124
+endpoint_task_id=smoke-pi-switch-2333124
+worktree=/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N775G45K6PQDRGGWM3BRCS/.pi-switch-live.gvYQBi/.treehouse/smoke-c4c64c/1/smoke
+project=/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N775G45K6PQDRGGWM3BRCS/.pi-switch-live.gvYQBi/projects/smoke
+harness=pi
+kind=scout
+tasktmp=/tmp/fm-smoke-pi-switch-2333124
+dispatch_harness=pi
+dispatch_model=zai/glm-5.3
+dispatch_effort=low
+busy_gen=g1790643140.2333706.2701
+spawn_gen=s1790643140.2333234.4833
+model=openai-codex/gpt-5.6-luna
+effort=low
+account_provider=openai-codex

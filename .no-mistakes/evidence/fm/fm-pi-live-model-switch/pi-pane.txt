@@ -1,0 +1,24 @@
+clif@Clifton-PC:~/.no-mistakes/worktrees/be2e8740e3ea/01M3N775G45K6PQDRGGWM3BRCS
+/.pi-switch-live.9o7zlj/.treehouse/smoke-a78817/1/smoke$ . '/tmp/fm-smoke-pi-swi
+tch-2170541+7f2d2a7504c27a5e3cb0b4ab26d43aaa4524474692fd90ceda37de6f0be8807b/lau
+nch.s1790642360.2170620.30368.sh'
+────────────────────────────────────────────────────────────────────────────────
+
+ Trust project folder?
+ /home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N775G45K6PQDRGGWM3BRCS/.pi-
+ switch-live.9o7zlj/.treehouse/smoke-a78817/1/smoke
+
+ This allows pi to load .pi settings and resources, install missing project
+ packages, and execute project extensions.
+
+ → Trust
+   Trust parent folder
+ (/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N775G45K6PQDRGGWM3BRCS/.pi
+ -switch-live.9o7zlj/.treehouse/smoke-a78817/1)
+   Trust (this session only)
+   Do not trust
+   Do not trust (this session only)
+
+ ↑↓ navigate  enter select  escape/ctrl+c cancel
+
+────────────────────────────────────────────────────────────────────────────────

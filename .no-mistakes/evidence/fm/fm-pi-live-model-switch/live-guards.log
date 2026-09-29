@@ -1,0 +1,12 @@
+spawned smoke-pi-switch-2376447 harness=pi kind=scout window=firstmate:fm-smoke-pi-switch-2376447 worktree=/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N775G45K6PQDRGGWM3BRCS/.pi-switch-live.RjfKXM/.treehouse/smoke-20bf89/1/smoke
+error: Pi catalog does not list zai/not-a-real-model; choose a listed model
+jq: error (at /home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N775G45K6PQDRGGWM3BRCS/.pi-switch-live.RjfKXM/config/crew-dispatch.json:22): destination needs a configured profile with a quota provider
+error: destination is not a configured verified profile; reassess with quota-array-dispatch
+LIVE GUARDS: unsupported model and unconfigured effort refused; confirmed profile unchanged
+switched-model smoke-pi-switch-2376447 harness=pi from=zai/glm-5.3:low model=zai/glm-5.3 effort=high provider=zai session=01a0eaa7-114a-7155-a7ee-63ef14b2531f backend=tmux endpoint=firstmate:fm-smoke-pi-switch-2376447 worktree=/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N775G45K6PQDRGGWM3BRCS/.pi-switch-live.RjfKXM/.treehouse/smoke-20bf89/1/smoke
+switched-model smoke-pi-switch-2376447 harness=pi from=zai/glm-5.3:high model=openai-codex/gpt-5.6-luna effort=low provider=openai-codex session=01a0eaa7-114a-7155-a7ee-63ef14b2531f backend=tmux endpoint=firstmate:fm-smoke-pi-switch-2376447 worktree=/home/clif/.no-mistakes/worktrees/be2e8740e3ea/01M3N775G45K6PQDRGGWM3BRCS/.pi-switch-live.RjfKXM/.treehouse/smoke-20bf89/1/smoke
+ok - Pi live switches preserved task, runtime session, worktree, edit and tool-free conversation recall
+action=hold
+jev=off
+reason=cooldown 597s remaining
+error: --history must name the task switch history (even before its first switch)

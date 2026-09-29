@@ -1,0 +1,31 @@
+{
+  "result": "Live continuity passed; remaining fault scenarios have regression-only evidence.",
+  "fix": "Smoke wrapper uses Pi --approve for per-run trust and --session-dir inside disposable LAB; retains earlier Firstmate spec and read-only cleanup repairs.",
+  "reproduction": "Actual fm-spawn Pi TUI parked at fresh-folder trust dialog. Session-only approval allowed completion; unattended rerun after wrapper fix exited 0.",
+  "verified_live": [
+    "Same-provider GLM low to high preserves session, task, worktree, edit, and tool-disabled random codeword recall",
+    "Cross-provider GLM to openai-codex Luna low preserves the same invariants",
+    "Concurrent lifecycle control request refused while switch active",
+    "Real selector holds without Jev pending supervisor judgment",
+    "Real selector rejects destination outside eligible candidates",
+    "Real quota preflight refuses exhausted native Grok without inference"
+  ],
+  "not_verified_live": [
+    "Busy-worker deferral",
+    "Failed, partial, timed-out, late acknowledgement and crash reconciliation",
+    "Herdr endpoint absence recovery: restricted to test doubles by user",
+    "Configured Jev response bounds",
+    "Recorded pi-signed executable selection"
+  ],
+  "prior_regressions": "Four focused scripts passed in previous phase round; not rerun because this round changes only the live smoke wrapper.",
+  "commands": [
+    "FM_PI_SWITCH_LIVE=1 bash tests/fm-pi-switch-model-live-e2e.test.sh"
+  ],
+  "logs": [
+    "live-smoke-restored.log",
+    "live-smoke-unattended.log",
+    "unsupported-restored.log",
+    "selector-restored.log"
+  ],
+  "note": "unsupported-restored.log actually records concurrent lifecycle refusal, not catalog refusal. Unsupported-model catalog refusal was verified in prior round. No xai inference or live Herdr lifecycle operations performed."
+}

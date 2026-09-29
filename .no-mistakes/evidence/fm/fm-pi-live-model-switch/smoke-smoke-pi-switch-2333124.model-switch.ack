@@ -1,0 +1,1 @@
+{"schema":"fm-pi-switch-model.v1","id":"1790643156.2335170.24829","incarnation":"11530bd1-9d25-4904-a6db-86dfaeb21d87","session_id":"01a0eaa5-fe00-77e4-b9ee-2e9e71e9e816","status":"applied","reason":"","model":"openai-codex/gpt-5.6-luna","effort":"low"}

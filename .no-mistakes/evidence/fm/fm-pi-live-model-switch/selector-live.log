@@ -1,0 +1,22 @@
+Omitted task history refuses
+error: --history must name the task switch history (even before its first switch)
+exit=2
+
+First checkpoint with missing history holds for supervisor judgment
+action=hold
+jev=off
+reason=firstmate judgment required: supply --decision after reviewing checkpoint evidence
+exit=0
+
+Recent failed attempt enforces cooldown
+action=hold
+jev=off
+reason=cooldown 600s remaining
+exit=0
+
+Three failed attempts enforce hourly bound
+action=hold
+jev=off
+reason=retry bound 3 switches in the last hour
+exit=0
+
