@@ -57,7 +57,7 @@ mkdir -p "$LAB/fakebin"
 cat > "$LAB/fakebin/pi" <<'SH'
 #!/usr/bin/env bash
 case "${1:-}" in auth|--list-models|--version) exec "$FM_SMOKE_PI" "$@" ;; esac
-exec "$FM_SMOKE_PI" -e "$FM_SMOKE_EXT" "$@"
+exec "$FM_SMOKE_PI" --approve --session-dir "$FM_SMOKE_LAB/sessions" -e "$FM_SMOKE_EXT" "$@"
 SH
 chmod +x "$LAB/fakebin/pi"
 export FM_SMOKE_PI="$REAL_PI" FM_SMOKE_EXT="$LAB/recall.ts"
@@ -116,7 +116,9 @@ mkdir -p "$LAB/data/$TASK"
 cat > "$LAB/data/$TASK/brief.md" <<'EOF'
 # Task
 ## Captain's intent
-Live-switch smoke. Create SMOKE.txt containing exactly PRESERVED-EDIT and reply READY.
+Live-switch smoke preserving the worker's task, conversation, and edits.
+## Firstmate spec
+Create SMOKE.txt containing exactly PRESERVED-EDIT and reply READY.
 Do not change models or other files.
 EOF
 
