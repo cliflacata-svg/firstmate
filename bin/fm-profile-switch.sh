@@ -301,6 +301,20 @@ PICK_MODEL=$(printf '%s' "$pick" | jq -r '.model // empty')
 PICK_EFFORT=$(printf '%s' "$pick" | jq -r '.effort // empty')
 PICK_PROVIDER=$(printf '%s' "$pick" | jq -r '.provider // empty')
 
+if [ "$decision" = move-provider ]; then
+  # Compare quota providers across harnesses, including native profiles whose
+  # provider is implicit. A harness change alone does not escape a quota bound.
+  # shellcheck source=bin/fm-quota-axi-lib.sh
+  . "$SCRIPT_DIR/fm-quota-axi-lib.sh"
+  IFS=: read -r _cur_harness _cur_model _cur_effort current_provider <<< "$CURRENT"
+  current_provider=${current_provider:-$(fm_quota_single_provider_for_harness "$CUR_HARNESS" || true)}
+  selected_provider=${PICK_PROVIDER:-$(fm_quota_single_provider_for_harness "$PICK_HARNESS" || true)}
+  if [ -z "$current_provider" ] || [ -z "$selected_provider" ] || [ "$current_provider" = "$selected_provider" ]; then
+    emit hold "quota move requires an eligible replacement on a different provider"
+    exit 0
+  fi
+fi
+
 fm_pi_switch_quota_ready "$PICK_HARNESS" "$PICK_MODEL" "$PICK_PROVIDER" || {
   emit hold "selected destination failed quota preflight"
   exit 0

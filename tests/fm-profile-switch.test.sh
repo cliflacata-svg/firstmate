@@ -120,6 +120,35 @@ test_bounded_selection() {
   pass 'bounded selection preserves rule eligibility and parses all candidates'
 }
 
+test_quota_provider_move() {
+  local out selected
+  jq '.rules[1].use += [{harness:"pi",model:"openai-codex/gpt-5.6-terra",effort:"high",provider:"codex"}]' "$RULES" > "$TMP_ROOT/quota-rules.json"
+  for selected in 'pi:openai-codex/gpt-5.6-sol:xhigh:codex' 'pi:openai-codex/gpt-5.6-terra:high:codex'; do
+    out=$(run_switch --rules "$TMP_ROOT/quota-rules.json" --checkpoint quota --decision move-provider --rule 1 \
+      --current 'pi:openai-codex/gpt-5.6-sol:xhigh:codex' --selected "$selected")
+    assert_contains "$out" 'action=hold' 'quota move must reject the current profile and same-provider alternatives'
+  done
+  out=$(run_switch --checkpoint quota --decision move-provider --rule default \
+    --current 'pi:zai/glm-5.3:low:zai' --selected 'pi:zai/glm-5.3:medium:zai')
+  assert_contains "$out" 'action=hold' 'a rule with no different-provider replacement must hold'
+  out=$(run_switch --checkpoint quota --decision move-provider --rule 1 \
+    --current 'pi:xai/grok-4.6:xhigh:grok' --selected 'grok:grok-4.6:high:')
+  assert_contains "$out" 'action=hold' 'a native harness on the constrained provider must hold'
+  out=$(run_switch --checkpoint quota --decision move-provider --rule 1 \
+    --current 'grok:grok-4.6:high:' --selected 'pi:xai/grok-4.6:xhigh:grok')
+  assert_contains "$out" 'action=hold' 'an omitted native current provider must resolve before comparison'
+  out=$(run_switch --checkpoint quota --decision move-provider --rule 1 \
+    --current 'pi:openai-codex/gpt-5.6-sol:xhigh:codex' --selected 'pi:xai/grok-4.6:xhigh:grok')
+  assert_contains "$out" 'action=live-switch' 'an eligible different-provider Pi profile must remain selectable'
+  out=$(run_switch --checkpoint quota --decision move-provider --rule 1 \
+    --current 'pi:openai-codex/gpt-5.6-sol:xhigh:codex' --selected 'grok:grok-4.6:high:')
+  assert_contains "$out" 'action=relaunch' 'an eligible different-provider native profile must remain selectable'
+  out=$(run_switch --checkpoint phase --routine --decision reduce --rule default \
+    --current 'pi:zai/glm-5.3:high:zai' --selected 'pi:zai/glm-5.3:medium:zai')
+  assert_contains "$out" 'action=live-switch' 'same-provider phase changes must remain allowed'
+  pass 'quota moves require a different provider for live switches and relaunches'
+}
+
 test_history_bounds() {
   local out log now
   log="$TMP_ROOT/history.log"
@@ -181,6 +210,7 @@ SH
 chmod +x "$FAKEBIN/quota-axi"
 export PATH="$FAKEBIN:$PATH"
 test_bounded_selection
+test_quota_provider_move
 test_history_bounds
 test_jev_bounds
 
