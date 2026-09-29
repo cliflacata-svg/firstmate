@@ -155,6 +155,7 @@ import { pathToFileURL } from "node:url";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 const mod = await import(pathToFileURL(process.env.EXT_PATH).href);
 const handlers = {};
+let turnStarted = false;
 const pi = {
   on: (name, fn) => { handlers[name] = fn; },
   events: { on: (name, fn) => { handlers[name] = fn; } },
@@ -163,6 +164,13 @@ const pi = {
   calls: 0,
   setModel: async (model) => {
     pi.calls++;
+    if (["admission", "admission-fail"].includes(process.env.MODE)) {
+      const admission = handlers["before_agent_start"]?.({}, ctx);
+      Promise.resolve(admission).then(() => { turnStarted = true; });
+      await new Promise(resolve => setTimeout(resolve, 30));
+      if (turnStarted) throw new Error("turn entered during model authentication");
+      if (process.env.MODE === "admission-fail") return false;
+    }
     if (process.env.MODE === "authfail") return false;
     pi._model = model;
     if (process.env.MODE === "late") {
@@ -172,7 +180,7 @@ const pi = {
     }
     return true;
   },
-  setThinkingLevel: (level) => { pi._effort = process.env.MODE === "clamped" ? "high" : level; },
+  setThinkingLevel: (level) => { if (turnStarted) throw new Error("effort changed during turn"); pi._effort = process.env.MODE === "clamped" ? "high" : level; },
   getThinkingLevel: () => process.env.MODE === "unknown-effort" ? "" : pi._effort,
 };
 const ctx = {
@@ -196,8 +204,15 @@ Object.assign(req, { incarnation: ready.incarnation, session_id: ready.session_i
 if (process.env.MODE === "stale") req.incarnation = "old-runtime";
 if (process.env.MODE === "expired") req.deadline = 1;
 if (process.env.MODE === "unsupported-effort") req.effort = "medium";
+if (process.env.MODE === "admitted") await handlers["before_agent_start"]?.({}, ctx);
 writeFileSync(process.env.REQ, JSON.stringify(req));
 await new Promise((resolve) => setTimeout(resolve, 400));
+if (process.env.MODE === "admitted") {
+  if (existsSync(process.env.ACK) || pi.calls) throw new Error("switch entered after turn admission");
+  await handlers["agent_settled"]({}, ctx);
+  await new Promise(resolve => setTimeout(resolve, 350));
+}
+if (["admission", "admission-fail"].includes(process.env.MODE) && !turnStarted) throw new Error("input remained blocked after switch");
 if (process.env.MODE === "stale") {
   if (existsSync(process.env.ACK) || pi.calls) throw new Error("stale request applied");
   handlers["session_shutdown"]({}, ctx);
@@ -245,7 +260,7 @@ test_pi_extension_live_switch_handshake() {
   printf '%s' "$out" | jq -e '.status == "refused" and .reason == "context-exceeds-destination"' >/dev/null \
     || fail "oversize ack was wrong: $out"
   local mode expected
-  for mode in stale expired unsupported-effort clamped unknown-effort late; do
+  for mode in stale expired unsupported-effort clamped unknown-effort late admission admission-fail admitted; do
     rm -f "$ack"
     jq -nc '{schema:"fm-pi-switch-model.v1",id:"edge",provider:"openai-codex",model_id:"gpt-5.6-luna",model:"openai-codex/gpt-5.6-luna",effort:"low"}' > "$req"
     out=$(drive_pi_switch "$ext" "$req" "$ack" "$ready" "$mode") || fail "$mode drive failed: $out"
@@ -253,6 +268,8 @@ test_pi_extension_live_switch_handshake() {
       stale) expected=ignored ;;
       expired) expected=cancelled ;;
       unsupported-effort) expected=refused ;;
+      admission|admitted) expected=applied ;;
+      admission-fail) expected=failed ;;
       *) expected=partial ;;
     esac
     printf '%s' "$out" | jq -e --arg expected "$expected" '.status == $expected' >/dev/null || fail "$mode status: $out"

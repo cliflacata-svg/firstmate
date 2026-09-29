@@ -993,14 +993,22 @@ record_note() {
 }
 
 do_relaunch() {
-  local exit_result state note_line
+  local exit_result state note_line absence
   local -a spawn_args
 
   require_state_verified_backend relaunch
   if ! fm_pi_switch_reconcile "$STATE" "$ID" "$META"; then
-    [ "$(agent_state)" = dead ] || die "reconcile the pending Pi switch before relaunch"
-    rm -f "$(fm_pi_switch_req_path "$STATE" "$ID")"
+    state=$(agent_state)
+    if [ "$state" = missing ]; then
+      absence=$(fm_control_endpoint_absence_verdict "$BACKEND" "$T")
+      state=${absence%%$'\t'*}
+    fi
+    case "$state" in
+      dead|gone) ;;
+      *) die "reconcile the pending Pi switch before relaunch; endpoint state $state ${absence:-}" ;;
+    esac
     [ -n "$NEW_MODEL" ] && [ -n "$NEW_EFFORT" ] || die "dead worker has unknown runtime; relaunch requires explicit model and effort"
+    rm -f "$(fm_pi_switch_req_path "$STATE" "$ID")"
   fi
   if [ "$(fm_meta_get "$META" model)" = unknown ] || [ "$(fm_meta_get "$META" effort)" = unknown ]; then
     [ -n "$NEW_MODEL" ] && [ -n "$NEW_EFFORT" ] || die "runtime profile unknown; relaunch requires explicit model and effort"
@@ -1134,6 +1142,8 @@ do_switch_model() {
   [ "$state_now" = alive ] \
     || die "task $ID's agent is '$state_now'; live model switch needs a running Pi session"
 
+  local FM_PI_BIN
+  FM_PI_BIN=$(resolve_pi_executable "$HARNESS") || die "recorded Pi executable '$HARNESS' is unavailable"
   fm_pi_switch_reconcile "$STATE" "$ID" "$META" || die "pending live-switch outcome"
   current_model=$(fm_meta_get "$META" model)
   current_effort=$(fm_meta_get "$META" effort)
@@ -1161,7 +1171,7 @@ do_switch_model() {
       *) die "config/pi-account pins Pi workers to providers ($pin_providers); destination $provider is not allowed" ;;
     esac
     export PI_CODING_AGENT_DIR="$pin_root"
-    fm_worker_account_check "$HARNESS" "$pin_declared" "$pin_root" "${FM_PI_BIN:-pi}" "$provider" || exit 1
+    fm_worker_account_check "$HARNESS" "$pin_declared" "$pin_root" "$FM_PI_BIN" "$provider" || exit 1
   fi
   fm_pi_switch_catalog_row "$provider" "$model_id" >/dev/null \
     || die "Pi catalog does not list $provider/$model_id; choose a listed model"

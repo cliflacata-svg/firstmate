@@ -209,6 +209,12 @@ fm_pi_switch_reconcile() {
 fm_pi_switch_quota_ready() {
   local harness=$1 model=$2 provider=$3 snapshot result
   . "$(dirname "${BASH_SOURCE[0]}")/fm-quota-axi-lib.sh"
+  if [ -z "$provider" ]; then
+    provider=$(fm_quota_single_provider_for_harness "$harness") || {
+      echo "error: no authoritative quota provider for $harness; declare one on the profile" >&2
+      return 1
+    }
+  fi
   snapshot=$(quota-axi --json 2>/dev/null) || { echo "error: quota snapshot unavailable" >&2; return 1; }
   printf '%s' "$snapshot" | fm_quota_json_valid || { echo "error: invalid quota snapshot" >&2; return 1; }
   result=$(printf '%s' "$snapshot" | jq -r --arg h "$harness" --arg m "$model" --arg p "$provider" "$FM_QUOTA_ROW_JQ"'

@@ -1858,19 +1858,6 @@ shell_quote() {
   printf "'"
 }
 
-resolve_pi_executable() {
-  local candidate dir
-  candidate=$(type -P -- "$1" 2>/dev/null) || return 1
-  [ -x "$candidate" ] || return 1
-  case "$candidate" in
-  /*) printf '%s\n' "$candidate" ;;
-  *)
-    dir=$(cd "$(dirname "$candidate")" 2>/dev/null && pwd -P) || return 1
-    printf '%s/%s\n' "$dir" "$(basename "$candidate")"
-    ;;
-  esac
-}
-
 # Pi's CLI surface is version-dependent, so probe the resolved executable's help
 # before composing the optional regular-TUI flag. An absent or inconclusive probe
 # omits the flag so older Pi versions can still spawn.
@@ -4616,6 +4603,7 @@ export default function (pi) {
   pi.on("agent_start", () => busyEvent("busy", "agent-start"));
   pi.on("agent_settled", (_event, ctx) => {
     if (ctx && typeof ctx.isIdle === "function" && !ctx.isIdle()) return;
+    turnAdmitted = false;
     return busyEvent("idle", "agent-settled");
   });
   pi.on("turn_end", () => execFile("touch", ["$TURNEND"]));
@@ -4632,6 +4620,12 @@ export default function (pi) {
   });
   let lastReqId = "";
   let applying = false;
+  let switchInFlight = Promise.resolve();
+  let turnAdmitted = false;
+  pi.on("before_agent_start", async () => {
+    turnAdmitted = true;
+    await switchInFlight;
+  });
   let switchTimer;
   const incarnation = randomUUID();
   const sessionId = (ctx) => ctx?.sessionManager?.getSessionId?.() || "";
@@ -4688,13 +4682,13 @@ export default function (pi) {
   };
   const pollSwitch = (ctx) => {
     try {
-      if (applying || !existsSync(SWITCH_REQ)) return;
+      if (applying || turnAdmitted || !existsSync(SWITCH_REQ)) return;
       const req = JSON.parse(readFileSync(SWITCH_REQ, "utf8"));
       if (!req || req.schema !== SWITCH_SCHEMA || !req.id || !Number.isFinite(req.deadline)) return;
       if (req.id === lastReqId) return;
       if (req.incarnation !== incarnation || req.session_id !== sessionId(ctx)) return;
       lastReqId = req.id;
-      void applySwitch(req, ctx);
+      switchInFlight = applySwitch(req, ctx);
     } catch {}
   };
   pi.on("session_start", (_event, ctx) => {

@@ -46,6 +46,19 @@
 # bound as its status authority is returned to a replacement with that adapter.
 
 # The complete control-plane verb allowlist, one per line.
+resolve_pi_executable() {
+  local candidate dir
+  candidate=$(type -P -- "$1" 2>/dev/null) || return 1
+  [ -x "$candidate" ] || return 1
+  case "$candidate" in
+  /*) printf '%s\n' "$candidate" ;;
+  *)
+    dir=$(cd "$(dirname "$candidate")" 2>/dev/null && pwd -P) || return 1
+    printf '%s/%s\n' "$dir" "$(basename "$candidate")"
+    ;;
+  esac
+}
+
 fm_control_verbs() {
   cat <<'EOF'
 interrupt

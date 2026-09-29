@@ -135,12 +135,29 @@ test_jev_bounds() {
   pass 'Jev remains bounded and every uncertain outcome holds'
 }
 
+test_native_provider_quota() {
+  local out harness model
+  for harness in grok claude; do
+    case "$harness" in grok) model=grok-4.6 ;; claude) model=sonnet ;; esac
+    jq -n --arg h "$harness" --arg m "$model" '{default:{harness:$h,model:$m,effort:"high"}}' > "$TMP_ROOT/native.json"
+    out=$(FM_TEST_QUOTA="$(jq -nc --arg p "$harness" '{schemaVersion:5,providers:[{provider:$p,quotaSemantics:{status:"known",effectiveAvailability:[{scope:"all_models",status:"known",effectivePercentRemaining:0,runway:{status:"exhausted_now"}}]}}]}')" \
+      run_switch --rules "$TMP_ROOT/native.json" --checkpoint complexity --decision escalate --rule default \
+      --current 'pi:zai/glm-5.3:low:zai' --selected "$harness:$model:high:")
+    assert_contains "$out" 'action=hold' 'omitted native provider must still enforce exhaustion'
+    assert_contains "$out" "$harness quota exhausted" 'quota veto must use authoritative native provider'
+  done
+  pass 'native profiles without provider cannot bypass exhausted quota'
+}
+
 cat > "$FAKEBIN/quota-axi" <<'SH'
 #!/usr/bin/env bash
-printf '%s\n' '{"schemaVersion":5,"providers":[]}'
+if [ -n "${FM_TEST_QUOTA:-}" ]; then printf '%s\n' "$FM_TEST_QUOTA";
+else printf '%s\n' '{"schemaVersion":5,"providers":[]}'; fi
 SH
 chmod +x "$FAKEBIN/quota-axi"
 export PATH="$FAKEBIN:$PATH"
 test_bounded_selection
 test_history_bounds
 test_jev_bounds
+
+test_native_provider_quota

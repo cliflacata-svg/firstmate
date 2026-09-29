@@ -73,6 +73,12 @@ SH
 if [ -n "${FM_TEST_QUOTA:-}" ]; then printf '%s\n' "$FM_TEST_QUOTA";
 else printf '%s\n' '{"schemaVersion":5,"providers":[]}'; fi
 SH
+  cat > "$fb/pi" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FM_FAKE_DIR/wrong-pi"
+exit 1
+SH
+  chmod +x "$fb/pi"
   chmod +x "$fb/tmux" "$fb/quota-axi"
 }
 
@@ -467,6 +473,41 @@ test_metadata_lock_preserves_concurrent_fields() {
   [ "$(fm_meta_get "$meta" dispatch_model)" = zai/glm-5.3 ] || fail 'dispatch snapshot lost'
   pass 'locked metadata confirmation preserves concurrent fields and dispatch snapshot'
 }
+
+test_signed_runtime_preflight() {
+  local dir listing auth out waiter rc
+  dir=$(new_case signed)
+  add_task "$dir" t1 pi-signed
+  jq '.default |= map(.harness="pi-signed")' "$dir/home/config/crew-dispatch.json" > "$dir/config.json"
+  mv "$dir/config.json" "$dir/home/config/crew-dispatch.json"
+  printf pi-signed > "$dir/fake/command"
+  listing=$(write_listing "$dir"); auth=$(write_auth "$dir")
+  cp "$listing" "$dir/fake/catalog"
+  cp "$auth" "$dir/fake/auth"
+  cat > "$dir/fakebin/pi-signed" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FM_FAKE_DIR/signed-calls"
+case "$1" in
+  --list-models) cat "$FM_FAKE_DIR/catalog" ;;
+  auth) cat "$FM_FAKE_DIR/auth" ;;
+  *) exit 1 ;;
+esac
+SH
+  chmod +x "$dir/fakebin/pi-signed"
+  seed_idle "$dir" t1; seed_handshake "$dir" t1
+  waiter=$(ack_when_requested "$dir" t1 applied openai-codex/gpt-5.6-luna low)
+  out=$(FM_PI_SWITCH_LISTING= FM_PI_SWITCH_AUTH_JSON= FM_CONTROL_SWITCH_ACK_WAIT=2 \
+    run_control "$dir" t1 switch-model --model openai-codex/gpt-5.6-luna --effort low)
+  rc=$?
+  wait "$waiter" 2>/dev/null || true
+  expect_code 0 "$rc" "pi-signed must use its own preflight executable: $out"
+  [ ! -e "$dir/fake/wrong-pi" ] || fail 'signed worker used ordinary pi'
+  assert_contains "$(cat "$dir/fake/signed-calls")" --list-models 'signed catalog must be queried'
+  assert_contains "$(cat "$dir/fake/signed-calls")" 'auth check' 'signed auth must be queried'
+  pass 'pi-signed checks catalog and credentials through its recorded executable'
+}
+
+test_signed_runtime_preflight
 
 test_unconfirmed_selection
 test_metadata_lock_preserves_concurrent_fields
