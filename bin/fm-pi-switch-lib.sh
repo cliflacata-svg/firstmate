@@ -6,9 +6,19 @@
 # --help on bin/fm-control.sh own caller-facing flags. This file owns:
 #   - the per-task request/ack/ready/history paths
 #   - request and ack JSON schema fm-pi-switch-model.v1
-#   - destination validation (catalog, effort, pin, auth)
+#   - destination validation (catalog, effort, pin, auth, quota)
 #   - idle wait, request publication, ack correlation
 #   - post-confirmation metadata and history writes
+#
+# Ready JSON names busy_gen, a runtime incarnation UUID, session_id, and the
+# observed model/effort. Requests bind that incarnation and session, with an
+# epoch deadline and optional cancelled=true. Acknowledgements bind the same
+# identity and carry status plus actual model/effort; absent fields are unknown.
+# Requests retire only after locked metadata reconciliation. A missing result
+# cancels the request and blocks further switching/relaunch until reconciled.
+# Quota joins reuse fm-quota-axi-lib.sh with the configured profile provider;
+# capability and completion-horizon selection remain quota-array-dispatch's
+# responsibility before the direct control verb is called.
 #
 # Live switching uses the per-task Pi extension already loaded with -e on a
 # ship or scout TUI launch (bin/fm-spawn.sh). It does not switch the pane to
@@ -106,26 +116,18 @@ fm_pi_switch_write_json() {
 # fm_pi_switch_write_request <state> <id> <req-id> <provider> <model-id> <effort>
 fm_pi_switch_write_request() {
   local state=$1 task=$2 req_id=$3 provider=$4 model_id=$5 effort=${6-}
-  local path json ts
+  local path json ts ready deadline
   ts=$(date +%s)
+  deadline=$(awk -v now="$ts" -v wait="${FM_CONTROL_SWITCH_ACK_WAIT:-20}" 'BEGIN {printf "%.0f", now + wait + 1}')
+  ready=$(cat "$(fm_pi_switch_ready_path "$state" "$task")") || return 1
   path=$(fm_pi_switch_req_path "$state" "$task")
-  json=$(jq -nc \
-    --arg schema "$FM_PI_SWITCH_SCHEMA" \
-    --arg id "$req_id" \
-    --arg provider "$provider" \
-    --arg model_id "$model_id" \
-    --arg model "$provider/$model_id" \
-    --arg effort "$effort" \
-    --argjson ts "$ts" \
-    '{
-      schema: $schema,
-      id: $id,
-      provider: $provider,
-      model_id: $model_id,
-      model: $model,
-      effort: (if $effort == "" or $effort == "default" then null else $effort end),
-      ts: $ts
-    }') || return 1
+  json=$(jq -nec --arg schema "$FM_PI_SWITCH_SCHEMA" --arg id "$req_id" \
+    --arg provider "$provider" --arg model_id "$model_id" --arg effort "$effort" \
+    --argjson ready "$ready" --argjson ts "$ts" --argjson deadline "$deadline" '
+    if ($ready.session_id // "") == "" or ($ready.incarnation // "") == "" then error("invalid handshake") else
+    {schema: $schema, id: $id, provider: $provider, model_id: $model_id,
+     model: ($provider + "/" + $model_id), effort: $effort, ts: $ts, deadline: $deadline,
+     session_id: $ready.session_id, incarnation: $ready.incarnation} end') || return 1
   fm_pi_switch_write_json "$path" "$json"
 }
 
@@ -133,14 +135,22 @@ fm_pi_switch_write_request() {
 # Prints the ack JSON when it exists, matches the schema, and names req-id.
 # Returns 1 when absent or unmatched.
 fm_pi_switch_read_ack() {
-  local state=$1 task=$2 req_id=$3 path json
+  local state=$1 task=$2 req_id=$3 path json req ready
   path=$(fm_pi_switch_ack_path "$state" "$task")
   [ -f "$path" ] || return 1
   json=$(cat "$path") || return 1
-  printf '%s' "$json" | jq -e --arg schema "$FM_PI_SWITCH_SCHEMA" --arg id "$req_id" '
+  req=$(cat "$(fm_pi_switch_req_path "$state" "$task")") || return 1
+  if [ -f "$(fm_pi_switch_ready_path "$state" "$task")" ]; then
+    ready=$(cat "$(fm_pi_switch_ready_path "$state" "$task")") || return 1
+    printf '%s' "$req" | jq -e --argjson ready "$ready" \
+      '.incarnation == $ready.incarnation and .session_id == $ready.session_id' >/dev/null || return 1
+  fi
+  printf '%s' "$json" | jq -e --argjson req "$req" --arg schema "$FM_PI_SWITCH_SCHEMA" --arg id "$req_id" '
     type == "object"
     and .schema == $schema
     and .id == $id
+    and .session_id == $req.session_id
+    and .incarnation == $req.incarnation
     and ((.status | type) == "string")
   ' >/dev/null 2>&1 || return 1
   printf '%s\n' "$json"
@@ -152,60 +162,69 @@ fm_pi_switch_append_history() {  # <state> <id> <line>
   printf '%s\n' "$3" >> "$log"
 }
 
-# fm_pi_switch_applied_count_since <state> <id> <epoch>
-fm_pi_switch_applied_count_since() {
-  local log
-  log=$(fm_pi_switch_log_path "$1" "$2")
-  [ -f "$log" ] || { printf '0'; return 0; }
-  awk -v since="$3" '
-    $0 ~ / status=applied($| )/ {
-      ts = 0
-      if (match($0, /ts=[0-9]+/)) ts = substr($0, RSTART + 3, RLENGTH - 3) + 0
-      if (ts >= since) n++
-    }
-    END { print n + 0 }
-  ' "$log"
-}
-
-fm_pi_switch_last_applied_ts() {
-  local log
-  log=$(fm_pi_switch_log_path "$1" "$2")
-  [ -f "$log" ] || { printf '0'; return 0; }
-  awk '
-    $0 ~ / status=applied($| )/ {
-      ts = 0
-      if (match($0, /ts=[0-9]+/)) ts = substr($0, RSTART + 3, RLENGTH - 3) + 0
-      if (ts > last) last = ts
-    }
-    END { print last + 0 }
-  ' "$log"
-}
-
-# fm_pi_switch_meta_put <meta> <key> <value>
-# Rewrites <meta> so <key> has exactly one trailing assignment.
-fm_pi_switch_meta_put() {
-  local meta=$1 key=$2 value=$3 tmp
-  tmp=$(mktemp "${meta}.XXXXXX") || return 1
-  awk -F= -v k="$key" -v v="$value" '
-    $1 == k { next }
-    { print }
-    END { print k "=" v }
-  ' "$meta" > "$tmp" || { rm -f "$tmp"; return 1; }
-  mv -f "$tmp" "$meta"
-}
-
-# fm_pi_switch_confirm_meta <meta> <model> <effort> <pi-provider>
-# Updates current runtime fields only. Leaves dispatch_* snapshot keys intact.
 fm_pi_switch_confirm_meta() {
-  local meta=$1 model=$2 effort=$3 provider=$4 ts
+  local meta=$1 model=${2:-unknown} effort=${3:-unknown} provider ts lock tmp rc=0
+  case "$model" in */*) provider=${model%%/*} ;; *) provider=unknown ;; esac
   ts=$(date +%s)
-  fm_pi_switch_meta_put "$meta" model "$model"
-  fm_pi_switch_meta_put "$meta" effort "${effort:-default}"
-  if [ -n "$provider" ]; then
-    fm_pi_switch_meta_put "$meta" account_provider "$provider"
-  fi
-  fm_pi_switch_meta_put "$meta" model_runtime "$model"
-  fm_pi_switch_meta_put "$meta" model_runtime_ts "$ts"
+  lock=$(fm_meta_lock_path "$meta") || return 1
+  fm_lock_acquire_wait "$lock" || return 1
+  tmp=$(mktemp "${meta}.XXXXXX") || { fm_lock_release "$lock"; return 1; }
+  awk -F= -v model="$model" -v effort="$effort" -v provider="$provider" -v ts="$ts" '
+    $1 ~ /^(model|effort|account_provider|model_runtime|model_runtime_ts)$/ {next}
+    {print}
+    END {print "model=" model; print "effort=" effort; print "account_provider=" provider;
+         print "model_runtime=" model; print "model_runtime_ts=" ts}
+  ' "$meta" > "$tmp" && mv -f "$tmp" "$meta" || rc=1
+  rm -f "$tmp"
+  fm_lock_release "$lock" || rc=1
+  return "$rc"
+}
+
+fm_pi_switch_cancel() {
+  local path json
+  path=$(fm_pi_switch_req_path "$1" "$2")
+  json=$(jq -c '.cancelled = true' "$path") || return 1
+  fm_pi_switch_write_json "$path" "$json"
+}
+
+fm_pi_switch_reconcile() {
+  local state=$1 task=$2 meta=$3 req ack model effort path
+  path=$(fm_pi_switch_req_path "$state" "$task")
+  [ -f "$path" ] || return 0
+  req=$(jq -er '.id' "$path") || return 1
+  ack=$(fm_pi_switch_read_ack "$state" "$task" "$req") || {
+    fm_pi_switch_cancel "$state" "$task" || return 1
+    fm_pi_switch_confirm_meta "$meta" unknown unknown
+    echo "error: pending live-switch outcome; runtime unknown, wait for cancellation/readback before switch or relaunch" >&2
+    return 1
+  }
+  model=$(printf '%s' "$ack" | jq -r '.model // empty')
+  effort=$(printf '%s' "$ack" | jq -r '.effort // empty')
+  fm_pi_switch_confirm_meta "$meta" "$model" "$effort" || return 1
+  fm_pi_switch_append_history "$state" "$task" \
+    "ts=$(date +%s) req=$req to=${model:-unknown}:${effort:-unknown} status=$(printf '%s' "$ack" | jq -r '.status')"
+  rm -f "$path"
+}
+
+fm_pi_switch_quota_ready() {
+  local harness=$1 model=$2 provider=$3 snapshot result
+  . "$(dirname "${BASH_SOURCE[0]}")/fm-quota-axi-lib.sh"
+  snapshot=$(quota-axi --json 2>/dev/null) || { echo "error: quota snapshot unavailable" >&2; return 1; }
+  printf '%s' "$snapshot" | fm_quota_json_valid || { echo "error: invalid quota snapshot" >&2; return 1; }
+  result=$(printf '%s' "$snapshot" | jq -r --arg h "$harness" --arg m "$model" --arg p "$provider" "$FM_QUOTA_ROW_JQ"'
+    quota_row(.; $p; quota_lane($h; $m)) as $row |
+    [$row.quotaSemantics.effectiveAvailability[]? | select(
+      .scope == "all_models" or .scope == "all_products" or
+      .scope == ("model:" + ($m | split("/") | last)) or
+      .scope == ("product:" + ($m | split("/") | last)))] as $bounds |
+    if any($bounds[]; .runway.status == "exhausted_now" or
+        (.status == "known" and .effectivePercentRemaining <= 0)) then "exhausted"
+    elif ($bounds | length) == 0 or any($bounds[]; .status != "known") then "unknown"
+    else "available" end') || return 1
+  case "$result" in
+    exhausted) echo "error: $provider quota exhausted for $model" >&2; return 1 ;;
+    unknown) echo "quota: $provider/$model unmeasured; supervisor assessment required" >&2 ;;
+  esac
 }
 
 # fm_pi_switch_wait_file <path> <timeout-seconds> <poll>

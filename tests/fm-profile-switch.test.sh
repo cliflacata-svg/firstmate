@@ -71,169 +71,76 @@ run_jev() {  # <response-json> <args...>
     "$SWITCH" --rules "$RULES" "$@" 2>&1
 }
 
-test_complexity_escalates_to_live_switch() {
-  local out
-  out=$(run_switch --checkpoint complexity \
-    --current 'pi:zai/glm-5.3:low:zai')
-  assert_contains "$out" "action=live-switch" "complexity should stay on Pi"
-  assert_contains "$out" "jev=off" "absent Jev key must report off"
-  assert_contains "$out" "effort=xhigh" "escalate should pick a stronger effort"
-  assert_contains "$out" "model=openai-codex/gpt-5.6-sol" "escalate should pick the stronger Pi profile"
-  pass "complexity escalates inside Pi as a live switch"
-}
-
-test_quota_moves_provider() {
-  local out
-  out=$(run_switch --checkpoint quota \
-    --current 'pi:zai/glm-5.3:low:zai')
-  assert_contains "$out" "action=live-switch" "quota should stay a live switch when Pi remains"
-  assert_contains "$out" "provider=codex" "quota should move to the other provider"
-  pass "quota moves across Pi providers as a live switch"
-}
-
-test_phase_without_routine_holds() {
-  local out
-  out=$(run_switch --checkpoint phase \
-    --current 'pi:zai/glm-5.3:low:zai')
-  assert_contains "$out" "action=hold" "phase without --routine must not reduce"
-  pass "phase without --routine holds"
-}
-
-test_routine_phase_reduces() {
-  local out
-  out=$(run_switch --checkpoint phase --routine \
-    --current 'pi:openai-codex/gpt-5.6-sol:xhigh:codex')
-  assert_contains "$out" "action=live-switch" "routine phase may reduce on Pi"
-  assert_contains "$out" "effort=low" "reduce should pick a lower effort"
-  pass "routine phase reduces inside Pi"
-}
-
-test_xai_stays_live_switch() {
-  local out
-  out=$(run_switch --checkpoint quota \
-    --current 'pi:zai/glm-5.3:low:zai' \
-    --candidates 'pi:xai/grok-4.5:low:grok')
-  assert_contains "$out" "action=live-switch" "xai on Pi is a live switch"
-  assert_contains "$out" "model=xai/grok-4.5" "quota should move to the xai Pi profile"
-  pass "xai SuperGrok on Pi is a live switch, not a native Grok relaunch"
-}
-
-test_harness_change_is_relaunch() {
-  local out
-  out=$(run_switch --checkpoint complexity \
+test_bounded_selection() {
+  local out rc
+  out=$(run_switch --checkpoint complexity --current 'pi:zai/glm-5.3:low:zai' --history "$TMP_ROOT/absent")
+  assert_contains "$out" 'action=hold' 'first checkpoint must hold for judgment'
+  assert_contains "$out" 'firstmate judgment' 'no-key fallback must request judgment'
+  out=$(run_switch --checkpoint quota --decision move-provider --rule 1 \
     --current 'pi:openai-codex/gpt-5.6-sol:xhigh:codex' \
-    --candidates 'grok:grok-4.6:high:')
-  assert_contains "$out" "action=relaunch" "a Grok destination must relaunch"
-  assert_contains "$out" "harness=grok" "relaunch should name Grok"
-  pass "a non-Pi destination is relaunch, not a live switch"
+    --selected 'pi:zai/glm-5.3:low:zai')
+  rc=$?
+  expect_code 1 "$rc" 'quota selection must not leave the matched capability class'
+  out=$(run_switch --checkpoint quota --decision move-provider --rule 0 \
+    --current 'pi:zai/glm-5.3:low:zai' \
+    --candidates 'pi:zai/glm-5.3:low:zai,pi:openai-codex/gpt-5.6-luna:low:codex' \
+    --selected 'pi:openai-codex/gpt-5.6-luna:low:codex')
+  assert_contains "$out" 'action=live-switch' 'second comma-separated candidate must survive parsing'
+  assert_contains "$out" 'model=openai-codex/gpt-5.6-luna' 'selection must match the supplied profile'
+  out=$(run_switch --checkpoint complexity --decision escalate --rule 1 \
+    --current 'pi:zai/glm-5.3:low:zai' --selected 'grok:grok-4.6:high:')
+  assert_contains "$out" 'action=relaunch' 'native harness selection requires relaunch'
+  out=$(run_switch --checkpoint phase --decision reduce --rule 0 \
+    --current 'pi:openai-codex/gpt-5.6-sol:xhigh:codex' --selected 'pi:zai/glm-5.3:low:zai')
+  expect_code 2 "$?" 'reduction requires an explicitly routine phase'
+  pass 'bounded selection preserves rule eligibility and parses all candidates'
 }
 
-test_cooldown_holds() {
-  local out log
-  log="$TMP_ROOT/history.log"
-  printf 'ts=%s req=1 from=a to=b status=applied\n' "$(date +%s)" > "$log"
-  out=$(FM_PROFILE_SWITCH_COOLDOWN_SECS=600 run_switch --checkpoint complexity \
-    --current 'pi:zai/glm-5.3:low:zai' --history "$log")
-  assert_contains "$out" "action=hold" "a fresh applied switch must cooldown"
-  assert_contains "$out" "cooldown" "the reason should name cooldown"
-  pass "cooldown prevents oscillation"
-}
-
-test_retry_bound_holds() {
+test_history_bounds() {
   local out log now
-  log="$TMP_ROOT/bound.log"
+  log="$TMP_ROOT/history.log"
   now=$(date +%s)
-  {
-    printf 'ts=%s req=1 from=a to=b status=applied\n' "$now"
-    printf 'ts=%s req=2 from=a to=b status=applied\n' "$now"
-    printf 'ts=%s req=3 from=a to=b status=applied\n' "$now"
-  } > "$log"
-  out=$(FM_PROFILE_SWITCH_COOLDOWN_SECS=0 FM_PROFILE_SWITCH_MAX_PER_HOUR=3 \
-    run_switch --checkpoint complexity \
+  printf 'ts=%s req=1 status=failed\n' "$now" > "$log"
+  out=$(run_switch --checkpoint quota --current 'pi:zai/glm-5.3:low:zai' --history "$log")
+  assert_contains "$out" cooldown 'failed attempts must cooldown'
+  printf 'ts=%s req=2 status=timeout\nts=%s req=3 status=refused\n' "$now" "$now" >> "$log"
+  out=$(FM_PROFILE_SWITCH_COOLDOWN_SECS=0 run_switch --checkpoint quota \
     --current 'pi:zai/glm-5.3:low:zai' --history "$log")
-  assert_contains "$out" "action=hold" "three switches in an hour must hold"
-  assert_contains "$out" "retry bound" "the reason should name the retry bound"
-  pass "retry bound prevents oscillation"
+  assert_contains "$out" 'retry bound' 'failed attempts must consume the retry budget'
+  pass 'failed attempts enforce cooldown and retry bounds'
 }
 
-test_absent_key_never_calls_jev() {
-  local out
-  rm -f "$JEV_LOG"/*
-  out=$(PATH="$FAKEBIN:$PATH" JEV_LOG="$JEV_LOG" FAKE_JEV_RESPONSE='{}' run_switch \
-    --checkpoint complexity --current 'pi:zai/glm-5.3:low:zai')
-  assert_contains "$out" "jev=off" "absent key must report jev=off"
-  [ ! -e "$JEV_LOG/request" ] || fail "absent key must not call Jev"
-  pass "absent Jev key falls back without a network call"
-}
-
-test_jev_stay_holds() {
+test_jev_bounds() {
   local out
   out=$(run_jev '{"answers":{"decision":{"choice":"stay","confidence":0.9}}}' \
-    --checkpoint complexity --current 'pi:zai/glm-5.3:low:zai' \
-    --evidence 'tests pass after one retry')
-  assert_contains "$out" "jev=on" "a confident Jev answer is used"
-  assert_contains "$out" "action=hold" "Jev stay must hold"
-  assert_contains "$(cat "$JEV_LOG/header")" "Authorization: Bearer test-key" "the key reaches curl on the fd header"
-  assert_equals '["escalate","stay"]' "$(jq -c '.questions.decision.criteria | keys' "$JEV_LOG/request")" \
-    "complexity offers only escalate and stay"
-  assert_equals 'tests pass after one retry' "$(jq -r '.state.checkpoint.evidence' "$JEV_LOG/request")" \
-    "the evidence reaches Jev"
-  pass "Jev may keep the current profile at a complexity checkpoint"
-}
-
-test_jev_escalates_on_phase() {
-  local out
-  out=$(run_jev '{"answers":{"decision":{"choice":"escalate","confidence":0.8}}}' \
-    --checkpoint phase --current 'pi:zai/glm-5.3:low:zai')
-  assert_contains "$out" "jev=on" "a confident Jev answer is used"
-  assert_contains "$out" "model=openai-codex/gpt-5.6-sol" "Jev escalate reaches the stronger profile"
-  pass "Jev may escalate at a phase checkpoint"
-}
-
-test_jev_disallowed_choice_falls_back() {
-  local out
-  out=$(run_jev '{"answers":{"decision":{"choice":"reduce","confidence":0.99}}}' \
-    --checkpoint phase --current 'pi:openai-codex/gpt-5.6-sol:xhigh:codex')
-  assert_contains "$out" "jev=error" "reduce without --routine is not an allowed answer"
-  assert_contains "$out" "action=hold" "fallback mapping holds a non-routine phase"
-  pass "Jev cannot choose a decision the checkpoint does not allow"
-}
-
-test_jev_low_confidence_falls_back() {
-  local out
+    --checkpoint complexity --current 'pi:zai/glm-5.3:low:zai' --evidence 'tests pass')
+  assert_contains "$out" 'jev=on' 'confident answer must be used'
+  assert_contains "$out" 'action=hold' 'stay must hold'
+  assert_equals '["escalate","stay"]' "$(jq -c '.questions.decision.criteria | keys' "$JEV_LOG/request")" 'bounded choices'
+  assert_equals 'tests pass' "$(jq -r '.state.checkpoint.evidence' "$JEV_LOG/request")" 'checkpoint evidence'
   out=$(run_jev '{"answers":{"decision":{"choice":"stay","confidence":0.3}}}' \
     --checkpoint quota --current 'pi:zai/glm-5.3:low:zai')
-  assert_contains "$out" "jev=ambiguous" "a low-confidence answer is ambiguous"
-  assert_contains "$out" "provider=codex" "fallback mapping moves provider on quota"
-  pass "low-confidence Jev answers fall back to the checkpoint mapping"
+  assert_contains "$out" 'jev=ambiguous' 'low confidence must be ambiguous'
+  assert_contains "$out" 'action=hold' 'ambiguous quota must hold'
+  out=$(run_jev '{"answers":{"decision":{"choice":"reduce","confidence":0.99}}}' \
+    --checkpoint phase --current 'pi:zai/glm-5.3:low:zai')
+  assert_contains "$out" 'jev=error' 'disallowed decision must fail'
+  assert_contains "$out" 'action=hold' 'error must hold'
+  mkdir -p "$EMPTY_HOME/config"
+  printf 'private project\n' > "$EMPTY_HOME/config/dispatch-never-send"
+  out=$(run_jev '{}' --checkpoint quota --current 'pi:zai/glm-5.3:low:zai' --evidence 'private project')
+  assert_contains "$out" 'jev=never-send' 'private evidence must not be sent'
+  [ ! -e "$JEV_LOG/request" ] || fail 'never-send leaked a request'
+  assert_contains "$out" 'action=hold' 'never-send must hold'
+  pass 'Jev remains bounded and every uncertain outcome holds'
 }
 
-test_jev_never_send_skips_call() {
-  local out home="$TMP_ROOT/never-send-home"
-  mkdir -p "$home/config"
-  printf 'Project Nightjar\n' > "$home/config/dispatch-never-send"
-  rm -f "$JEV_LOG"/*
-  out=$(PATH="$FAKEBIN:$PATH" JEV_LOG="$JEV_LOG" FAKE_JEV_RESPONSE='{}' \
-    TYPESAFE_API_KEY=test-key FM_HOME="$home" "$SWITCH" --rules "$RULES" \
-    --checkpoint complexity --current 'pi:zai/glm-5.3:low:zai' \
-    --evidence 'blocked on project   nightjar schema' 2>&1)
-  assert_contains "$out" "jev=never-send" "a never-send match must be reported"
-  [ ! -e "$JEV_LOG/request" ] || fail "a never-send match must not call Jev"
-  assert_contains "$out" "action=live-switch" "the checkpoint mapping still decides"
-  pass "never-send evidence is not sent to Jev"
-}
-
-test_complexity_escalates_to_live_switch
-test_absent_key_never_calls_jev
-test_jev_stay_holds
-test_jev_escalates_on_phase
-test_jev_disallowed_choice_falls_back
-test_jev_low_confidence_falls_back
-test_jev_never_send_skips_call
-test_quota_moves_provider
-test_phase_without_routine_holds
-test_routine_phase_reduces
-test_xai_stays_live_switch
-test_harness_change_is_relaunch
-test_cooldown_holds
-test_retry_bound_holds
+cat > "$FAKEBIN/quota-axi" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' '{"schemaVersion":5,"providers":[]}'
+SH
+chmod +x "$FAKEBIN/quota-axi"
+export PATH="$FAKEBIN:$PATH"
+test_bounded_selection
+test_history_bounds
+test_jev_bounds

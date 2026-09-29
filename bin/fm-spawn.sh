@@ -1686,6 +1686,10 @@ if [ "$RELAUNCH" -eq 1 ]; then
     exit 1
   }
   RELAUNCH_META="$STATE/$ID.meta"
+  if [ -f "$STATE/$ID.model-switch.req" ]; then
+    echo "error: pending Pi switch must be reconciled through fm-control before relaunch" >&2
+    exit 1
+  fi
   if [ ! -e "$RELAUNCH_META" ] && [ ! -L "$RELAUNCH_META" ]; then
     echo "error: --relaunch needs an existing task record; no $RELAUNCH_META" >&2
     exit 1
@@ -4598,6 +4602,7 @@ const busyEvent = (state, event) =>
       "--gen", "$BUSY_GEN", "--source", "pi-ext", "--event", event,
     ], () => resolve());
   });
+import { randomUUID } from "node:crypto";
 const SWITCH_REQ = "$STATE_REAL/$ID.model-switch.req";
 const SWITCH_ACK = "$STATE_REAL/$ID.model-switch.ack";
 const SWITCH_READY = "$STATE_REAL/$ID.model-switch.ready";
@@ -4628,107 +4633,83 @@ export default function (pi) {
   let lastReqId = "";
   let applying = false;
   let switchTimer;
-  const currentModelName = (ctx) => {
-    const model = ctx && ctx.model;
-    if (!model || !model.provider || !model.id) return "";
-    return String(model.provider) + "/" + String(model.id);
+  const incarnation = randomUUID();
+  const sessionId = (ctx) => ctx?.sessionManager?.getSessionId?.() || "";
+  const readback = (ctx) => ({
+    model: ctx?.model?.provider && ctx?.model?.id ? ctx.model.provider + "/" + ctx.model.id : "",
+    effort: pi.getThinkingLevel?.() || "",
+  });
+  const publishReady = (ctx) => writeJson(SWITCH_READY, {
+    schema: SWITCH_SCHEMA, incarnation, busy_gen: "$BUSY_GEN", session_id: sessionId(ctx), ...readback(ctx),
+  });
+  const cancelled = (req) => {
+    try {
+      const current = JSON.parse(readFileSync(SWITCH_REQ, "utf8"));
+      return current.id !== req.id || current.cancelled || Date.now() >= req.deadline * 1000;
+    } catch { return true; }
   };
   const applySwitch = async (req, ctx) => {
-    const base = {
-      schema: SWITCH_SCHEMA,
-      id: req.id,
-      session_id: (ctx && ctx.sessionManager && typeof ctx.sessionManager.getSessionId === "function")
-        ? ctx.sessionManager.getSessionId()
-        : "",
+    const base = { schema: SWITCH_SCHEMA, id: req.id, incarnation, session_id: sessionId(ctx) };
+    const finish = (status, reason = "") => {
+      writeJson(SWITCH_ACK, { ...base, status, reason, ...readback(ctx) });
+      publishReady(ctx);
     };
-    if (applying) {
-      writeJson(SWITCH_ACK, { ...base, status: "busy", reason: "switch-in-flight" });
-      return;
-    }
-    if (ctx && typeof ctx.isIdle === "function" && !ctx.isIdle()) {
-      writeJson(SWITCH_ACK, { ...base, status: "busy", reason: "agent-not-idle" });
-      return;
+    if (req.incarnation !== incarnation || req.session_id !== sessionId(ctx)) return;
+    if (cancelled(req)) { finish("cancelled", "request-expired-or-cancelled"); return; }
+    if (typeof ctx?.isIdle !== "function" || !ctx.isIdle()) {
+      finish("busy", "agent-not-idle"); return;
     }
     applying = true;
     try {
-      const provider = String(req.provider || "");
-      const modelId = String(req.model_id || "");
-      const model = ctx && ctx.modelRegistry && typeof ctx.modelRegistry.find === "function"
-        ? ctx.modelRegistry.find(provider, modelId)
-        : undefined;
-      if (!model) {
-        writeJson(SWITCH_ACK, { ...base, status: "refused", reason: "model-not-found", model: currentModelName(ctx) });
-        return;
+      const model = ctx?.modelRegistry?.find?.(req.provider, req.model_id);
+      if (!model) { finish("refused", "model-not-found"); return; }
+      const { getSupportedThinkingLevels } = await import("@earendil-works/pi-ai");
+      if (req.effort && req.effort !== "default" && !getSupportedThinkingLevels(model).includes(req.effort)) {
+        finish("refused", "unsupported-effort"); return;
       }
-      const usage = ctx && typeof ctx.getContextUsage === "function" ? ctx.getContextUsage() : undefined;
-      const used = usage && typeof usage.tokens === "number" ? usage.tokens : null;
-      const destWindow = typeof model.contextWindow === "number" ? model.contextWindow : null;
-      if (used != null && destWindow != null && used > destWindow) {
-        writeJson(SWITCH_ACK, {
-          ...base,
-          status: "refused",
-          reason: "context-exceeds-destination",
-          model: currentModelName(ctx),
-          tokens: used,
-          context: destWindow,
-        });
-        return;
+      const usage = ctx.getContextUsage?.();
+      if (typeof usage?.tokens !== "number" || typeof model.contextWindow !== "number") {
+        finish("refused", "context-unknown"); return;
       }
-      const ok = await pi.setModel(model);
-      if (!ok) {
-        writeJson(SWITCH_ACK, { ...base, status: "failed", reason: "set-model-auth", model: currentModelName(ctx) });
-        return;
-      }
-      if (req.effort && typeof pi.setThinkingLevel === "function") {
-        pi.setThinkingLevel(req.effort);
-      }
-      const actualModel = currentModelName(ctx);
-      const actualEffort = typeof pi.getThinkingLevel === "function" ? pi.getThinkingLevel() : req.effort || "";
-      writeJson(SWITCH_ACK, {
-        ...base,
-        status: "applied",
-        model: actualModel,
-        effort: actualEffort,
-        tokens: used,
-        context: destWindow,
-      });
+      if (usage.tokens > model.contextWindow) { finish("refused", "context-exceeds-destination"); return; }
+      if (cancelled(req)) { finish("cancelled", "request-expired-or-cancelled"); return; }
+      if (!ctx.isIdle()) { finish("busy", "agent-not-idle"); return; }
+      if (!await pi.setModel(model)) { finish("failed", "set-model-auth"); return; }
+      if (!cancelled(req) && req.effort && req.effort !== "default") pi.setThinkingLevel(req.effort);
+      const actual = readback(ctx);
+      const confirmed = actual.model === req.model && actual.effort &&
+        (!req.effort || req.effort === "default" || actual.effort === req.effort);
+      finish(confirmed && !cancelled(req) ? "applied" : "partial", confirmed ? "" : "selection-not-confirmed");
     } catch (err) {
-      writeJson(SWITCH_ACK, {
-        ...base,
-        status: "failed",
-        reason: String(err),
-        model: currentModelName(ctx),
-      });
+      finish("failed", String(err));
     } finally {
       applying = false;
     }
   };
   const pollSwitch = (ctx) => {
     try {
-      if (!existsSync(SWITCH_REQ)) return;
-      const raw = readFileSync(SWITCH_REQ, "utf8").trim();
-      if (!raw) return;
-      const req = JSON.parse(raw);
-      if (!req || req.schema !== SWITCH_SCHEMA || !req.id) return;
+      if (applying || !existsSync(SWITCH_REQ)) return;
+      const req = JSON.parse(readFileSync(SWITCH_REQ, "utf8"));
+      if (!req || req.schema !== SWITCH_SCHEMA || !req.id || !Number.isFinite(req.deadline)) return;
       if (req.id === lastReqId) return;
+      if (req.incarnation !== incarnation || req.session_id !== sessionId(ctx)) return;
       lastReqId = req.id;
       void applySwitch(req, ctx);
-    } catch {
-      // Malformed request files stay on disk for fm-control to time out.
-    }
+    } catch {}
   };
   pi.on("session_start", (_event, ctx) => {
-    writeFileSync(SWITCH_READY, "ready\\n");
+    publishReady(ctx);
     if (switchTimer) clearInterval(switchTimer);
     switchTimer = setInterval(() => pollSwitch(ctx), 250);
     pollSwitch(ctx);
   });
   pi.on("session_shutdown", () => {
-    if (switchTimer) {
-      clearInterval(switchTimer);
-      switchTimer = undefined;
-    }
-    try { unlinkSync(SWITCH_READY); } catch { /* already gone */ }
+    if (switchTimer) clearInterval(switchTimer);
+    switchTimer = undefined;
+    try {
+      const ready = JSON.parse(readFileSync(SWITCH_READY, "utf8"));
+      if (ready.incarnation === incarnation) unlinkSync(SWITCH_READY);
+    } catch {}
   });
 }
 EOF

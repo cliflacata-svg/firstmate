@@ -10,6 +10,9 @@
 #                        [--routine]
 #                        [--candidates <harness:model:effort[:provider],...>]
 #                        [--evidence <checkpoint text>]
+#                        [--decision <escalate|move-provider|reduce|stay>]
+#                        [--rule <zero-based-index|default>]
+#                        [--selected <harness:model:effort[:provider]>]
 #
 # Prints one action block:
 #   action=hold|live-switch|relaunch
@@ -17,30 +20,14 @@
 #   reason=<text>
 #   harness=... model=... effort=... provider=...   (when not hold)
 #
-# Checkpoint mapping in code (firstmate's judged path):
-#   complexity|stall -> escalate
-#   quota            -> move-provider
-#   phase            -> stay, or reduce when --routine is passed
-#
-# Jev (typesafe System One) is opt-in with the same TYPESAFE_API_KEY gate as
-# bin/fm-dispatch-resolve.sh (environment, else $FM_HOME/.env). When the key
-# is present and no cooldown or retry bound holds, one POST classifies the
-# checkpoint kind, --routine, and --evidence text among only the decisions
-# that checkpoint allows:
-#   complexity|stall -> escalate|stay
-#   quota            -> move-provider|stay
-#   phase            -> escalate|stay, plus reduce with --routine
-# Jev never sees or returns model IDs. jev=on means its answer cleared a 0.6
-# confidence floor and was used; ambiguous, error, or never-send (a match in
-# config/dispatch-never-send; nothing sent) fall back to the mapping above.
-# Without the key there is no network call and jev=off.
-#
-# Eligible destinations are the --candidates list when given, otherwise every
-# profile in --rules. Capability, authentication, quota, and context checks
-# stay in this script and bin/fm-pi-switch-lib.sh; Jev does not select among
-# them. A Pi destination on a Pi current harness is live-switch; any other
-# harness change is relaunch. Cooldown and per-hour retry bounds are owned
-# here (FM_PROFILE_SWITCH_COOLDOWN_SECS, FM_PROFILE_SWITCH_MAX_PER_HOUR).
+# Jev classifies only bounded decisions when configured; otherwise hold for
+# firstmate judgment. --decision supplies that explicit judgment.
+# --rule selects a zero-based rule index or default after reassessment.
+# --candidates restricts that rule's alternatives. --selected supplies the
+# profile chosen by firstmate through quota-array-dispatch, including every
+# candidate's capability, authentication, context and quota evidence.
+# No array ordering or effort rank is used as a capability classifier.
+# --selected and --decision use the same profile/decision tokens as output.
 set -eu
 
 TYPESAFE_API_KEY_PRIVATE=${TYPESAFE_API_KEY:-}
@@ -75,6 +62,9 @@ HISTORY=
 ROUTINE=0
 CANDIDATES=
 EVIDENCE=
+DECISION=
+RULE=
+SELECTED=
 
 want=
 for arg in "$@"; do
@@ -86,6 +76,9 @@ for arg in "$@"; do
       history) HISTORY=$arg ;;
       candidates) CANDIDATES=$arg ;;
       evidence) EVIDENCE=$arg ;;
+      decision) DECISION=$arg ;;
+      rule) RULE=$arg ;;
+      selected) SELECTED=$arg ;;
     esac
     want=
     continue
@@ -103,6 +96,9 @@ for arg in "$@"; do
     --candidates=*) CANDIDATES=${arg#--candidates=} ;;
     --evidence) want=evidence ;;
     --evidence=*) EVIDENCE=${arg#--evidence=} ;;
+    --decision) want=decision ;;
+    --rule) want=rule ;;
+    --selected) want=selected ;;
     --routine) ROUTINE=1 ;;
     *) echo "error: unexpected argument '$arg'" >&2; exit 2 ;;
   esac
@@ -116,9 +112,7 @@ esac
 [ -n "$CURRENT" ] || { echo "error: --current is required" >&2; exit 2; }
 [ -n "$RULES" ] && [ -f "$RULES" ] || { echo "error: --rules must be an existing crew-dispatch.json" >&2; exit 2; }
 
-IFS=':' read -r CUR_HARNESS CUR_MODEL CUR_EFFORT CUR_PROVIDER <<EOF
-$CURRENT
-EOF
+CUR_HARNESS=${CURRENT%%:*}
 [ -n "$CUR_HARNESS" ] || { echo "error: --current needs harness:model:effort" >&2; exit 2; }
 
 if [ -z "$TYPESAFE_API_KEY_PRIVATE" ]; then
@@ -143,25 +137,20 @@ emit() {  # <action> <reason> [harness model effort provider]
   fi
 }
 
-decision=stay
-case "$CHECKPOINT" in
-  complexity|stall) decision=escalate ;;
-  quota) decision=move-provider ;;
-  phase)
-    if [ "$ROUTINE" = 1 ]; then
-      decision=reduce
-    else
-      decision=stay
-    fi
-    ;;
+decision=$DECISION
+case "$CHECKPOINT:$decision:$ROUTINE" in
+  *::*) ;;
+  *:stay:*) ;;
+  complexity:escalate:*|stall:escalate:*|phase:escalate:*|quota:move-provider:*|phase:reduce:1) ;;
+  *) echo "error: decision is not allowed at this checkpoint" >&2; exit 2 ;;
 esac
 
-if [ -n "$HISTORY" ]; then
+if [ -f "$HISTORY" ]; then
   now=$(date +%s)
   cooldown=${FM_PROFILE_SWITCH_COOLDOWN_SECS:-600}
   max_hour=${FM_PROFILE_SWITCH_MAX_PER_HOUR:-3}
   last=$(awk '
-    $0 ~ / status=applied($| )/ {
+    $0 ~ / status=(attempted|applied|refused|failed|partial|timeout|cancelled)($| )/ {
       ts = 0
       if (match($0, /ts=[0-9]+/)) ts = substr($0, RSTART + 3, RLENGTH - 3) + 0
       if (ts > last) last = ts
@@ -174,10 +163,11 @@ if [ -n "$HISTORY" ]; then
   fi
   hour_ago=$((now - 3600))
   count=$(awk -v since="$hour_ago" '
-    $0 ~ / status=applied($| )/ {
+    $0 ~ / status=(attempted|applied|refused|failed|partial|timeout|cancelled)($| )/ {
       ts = 0
       if (match($0, /ts=[0-9]+/)) ts = substr($0, RSTART + 3, RLENGTH - 3) + 0
-      if (ts >= since) n++
+      req = $0; sub(/^.* req=/, "", req); sub(/ .*/, "", req)
+      if (ts >= since && !seen[req]++) n++
     }
     END { print n + 0 }
   ' "$HISTORY")
@@ -261,7 +251,7 @@ jev_classify() {
   esac
 }
 
-if [ -n "$TYPESAFE_API_KEY_PRIVATE" ]; then
+if [ -z "$decision" ] && [ -n "$TYPESAFE_API_KEY_PRIVATE" ]; then
   jev_classify
 fi
 
@@ -270,95 +260,41 @@ if [ "$decision" = stay ]; then
   exit 0
 fi
 
-effort_rank() {
-  case "$1" in
-    low) printf '1' ;;
-    medium) printf '2' ;;
-    high) printf '3' ;;
-    xhigh) printf '4' ;;
-    max) printf '5' ;;
-    *) printf '2' ;;
-  esac
-}
-
-profiles_json=$(jq -c '
-  def profiles($value):
-    if ($value | type) == "array" then $value
-    elif ($value | type) == "object" then [$value]
-    else [] end;
-  [((.rules // [])[] | profiles(.use)[]), (profiles(.default // null)[])]
-  | map(select((.harness | type) == "string" and (.harness | length) > 0))
-' "$RULES") || {
-  echo "error: malformed rules file: $RULES" >&2
-  exit 1
-}
-
-if [ -n "$CANDIDATES" ]; then
-  profiles_json=$(printf '%s' "$CANDIDATES" | awk -F: -v OFS= '
-    BEGIN { printf "[" }
-    {
-      if (NR > 1) printf ","
-      harness=$1; model=$2; effort=$3; provider=$4
-      printf "{\"harness\":\"%s\"", harness
-      if (model != "") printf ",\"model\":\"%s\"", model
-      if (effort != "") printf ",\"effort\":\"%s\"", effort
-      if (provider != "") printf ",\"provider\":\"%s\"", provider
-      printf "}"
-    }
-    END { printf "]" }
-  ')
-fi
-
-cur_rank=$(effort_rank "${CUR_EFFORT:-medium}")
-
-pick=$(printf '%s' "$profiles_json" | jq -c \
-  --arg decision "$decision" \
-  --arg cur_h "$CUR_HARNESS" \
-  --arg cur_m "$CUR_MODEL" \
-  --arg cur_e "${CUR_EFFORT:-}" \
-  --arg cur_p "${CUR_PROVIDER:-}" \
-  --argjson cur_rank "$cur_rank" '
-  def rank($e):
-    if $e == "low" then 1
-    elif $e == "medium" then 2
-    elif $e == "high" then 3
-    elif $e == "xhigh" then 4
-    elif $e == "max" then 5
-    else 2 end;
-  def ident($p):
-    ($p.harness // "") + ":" + ($p.model // "") + ":" + ($p.effort // "") + ":" + ($p.provider // "");
-  def current($p):
-    ident($p) == ($cur_h + ":" + $cur_m + ":" + $cur_e + ":" + $cur_p)
-    or ($p.harness == $cur_h and ($p.model // "") == $cur_m and ($p.effort // "") == $cur_e);
-  [ .[] | select(current(.) | not) ] as $rest
-  | if $decision == "escalate" then
-      ($rest | map(select(rank(.effort // "medium") > $cur_rank))) as $up
-      | if ($up | length) > 0 then $up[0]
-        else ($rest | map(select(.harness != $cur_h)) | .[0] // null) end
-    elif $decision == "move-provider" then
-      ($rest | map(select(
-        (.harness == $cur_h)
-        and rank(.effort // "medium") >= $cur_rank
-        and ((.provider // "") != $cur_p)
-      ))) as $cross
-      | if ($cross | length) > 0 then $cross[0]
-        else ($rest | map(select((.provider // "") != $cur_p or .harness != $cur_h)) | .[0] // null) end
-    elif $decision == "reduce" then
-      ($rest | map(select(rank(.effort // "medium") < $cur_rank)) | sort_by(rank(.effort // "medium"))) as $down
-      | if ($down | length) > 0 then $down[0]
-        else null end
-    else null end
-')
-
-if [ -z "$pick" ] || [ "$pick" = null ]; then
-  emit hold "no eligible destination for $decision from $CURRENT"
+if [ -z "$decision" ]; then
+  emit hold "firstmate judgment required: supply --decision after reviewing checkpoint evidence"
   exit 0
 fi
+if [ -z "$RULE" ] || [ -z "$SELECTED" ]; then
+  emit hold "firstmate must reassess the matched rule and select through quota-array-dispatch; supply --rule and --selected"
+  exit 0
+fi
+
+pick=$(jq -ce --arg rule "$RULE" --arg candidates "$CANDIDATES" --arg selected "$SELECTED" '
+  def profile:
+    split(":") | if length < 3 or length > 4 then error("invalid profile") else
+    {harness: .[0], model: .[1], effort: .[2], provider: (.[3] // "")} end;
+  def norm: {harness, model: (.model // ""), effort: (.effort // ""), provider: (.provider // "")};
+  (if $rule == "default" then .default
+   elif ($rule | test("^[0-9]+$")) then .rules[$rule | tonumber].use
+   else error("invalid rule") end) |
+  (if type == "object" then [.] else . end) |
+  if type != "array" or length == 0 then error("missing rule profiles") else . end |
+  map(norm) as $eligible |
+  (if $candidates == "" then $eligible else $candidates | split(",") | map(profile) end) as $subset |
+  if any($subset[]; . as $p | ($eligible | index($p)) == null) then error("candidate outside matched rule") else . end |
+  ($selected | profile) as $pick |
+  if ($subset | index($pick)) == null then error("selection outside candidates") else $pick end
+' "$RULES") || { echo "error: invalid matched-rule selection" >&2; exit 1; }
 
 PICK_HARNESS=$(printf '%s' "$pick" | jq -r '.harness')
 PICK_MODEL=$(printf '%s' "$pick" | jq -r '.model // empty')
 PICK_EFFORT=$(printf '%s' "$pick" | jq -r '.effort // empty')
 PICK_PROVIDER=$(printf '%s' "$pick" | jq -r '.provider // empty')
+
+fm_pi_switch_quota_ready "$PICK_HARNESS" "$PICK_MODEL" "$PICK_PROVIDER" || {
+  emit hold "selected destination failed quota preflight"
+  exit 0
+}
 
 if [ "$PICK_HARNESS" = "$CUR_HARNESS" ] && { [ "$PICK_HARNESS" = pi ] || [ "$PICK_HARNESS" = pi-signed ]; }; then
   emit live-switch "checkpoint $CHECKPOINT decision $decision" \

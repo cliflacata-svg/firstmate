@@ -10,6 +10,7 @@ set -u
 . "$ROOT/bin/fm-backend.sh"
 # shellcheck source=/dev/null
 . "$ROOT/bin/fm-pi-switch-lib.sh"
+. "$ROOT/bin/fm-wake-lib.sh"
 
 CONTROL="$ROOT/bin/fm-control.sh"
 TMP_ROOT=$(fm_test_tmproot fm-pi-switch-model)
@@ -67,7 +68,12 @@ case "${1:-}" in
 esac
 exit 0
 SH
-  chmod +x "$fb/tmux"
+  cat > "$fb/quota-axi" <<'SH'
+#!/usr/bin/env bash
+if [ -n "${FM_TEST_QUOTA:-}" ]; then printf '%s\n' "$FM_TEST_QUOTA";
+else printf '%s\n' '{"schemaVersion":5,"providers":[]}'; fi
+SH
+  chmod +x "$fb/tmux" "$fb/quota-axi"
 }
 
 new_case() {
@@ -102,6 +108,12 @@ add_task() {
     echo "dispatch_effort=low"
     echo "dispatch_provider=zai"
   } > "$home/state/$id.meta"
+  jq -n '{default: [
+    {harness:"pi",model:"zai/glm-5.3",effort:"low",provider:"zai"},
+    {harness:"pi",model:"zai/glm-5.3",effort:"high",provider:"zai"},
+    {harness:"pi",model:"openai-codex/gpt-5.6-luna",effort:"low",provider:"codex"},
+    {harness:"pi",model:"openai-codex/gpt-5.6-luna",effort:"medium",provider:"codex"}
+  ]}' > "$home/config/crew-dispatch.json"
   printf '%s\n' "fm-$id" > "$dir/fake/windows"
   printf '%s' "$wt" > "$dir/fake/cwd"
 }
@@ -122,13 +134,21 @@ run_control() {
 seed_idle() {
   local dir=$1 id=$2 gen
   gen=$("$ROOT/bin/fm-busy-event.sh" arm "$dir/home/state" "$id") || return 1
+  printf 'busy_gen=%s\n' "$gen" >> "$dir/home/state/$id.meta"
   "$ROOT/bin/fm-busy-event.sh" apply "$dir/home/state" "$id" idle \
     --gen "$gen" --source pi-ext --event agent-settled >/dev/null
 }
 
 seed_busy() {
-  local dir=$1 id=$2
-  "$ROOT/bin/fm-busy-event.sh" arm "$dir/home/state" "$id" >/dev/null
+  local dir=$1 id=$2 gen
+  gen=$("$ROOT/bin/fm-busy-event.sh" arm "$dir/home/state" "$id")
+  printf 'busy_gen=%s\n' "$gen" >> "$dir/home/state/$id.meta"
+}
+
+seed_handshake() {
+  jq -n --arg gen "$(fm_meta_get "$1/home/state/$2.meta" busy_gen)" \
+    '{schema:"fm-pi-switch-model.v1",incarnation:$gen,busy_gen:$gen,session_id:"sess-1"}' \
+    > "$(fm_pi_switch_ready_path "$1/home/state" "$2")"
 }
 
 write_listing() {
@@ -150,7 +170,7 @@ write_auth() {
 }
 
 ack_when_requested() {
-  local dir=$1 id=$2 status=${3:-applied} model=${4:-openai-codex/gpt-5.6-luna} effort=${5:-low}
+  local dir=$1 id=$2 status=${3:-applied} model=${4-openai-codex/gpt-5.6-luna} effort=${5-low}
   local req ack
   req=$(fm_pi_switch_req_path "$dir/home/state" "$id")
   ack=$(fm_pi_switch_ack_path "$dir/home/state" "$id")
@@ -163,8 +183,8 @@ ack_when_requested() {
     [ -s "$req" ] || exit 1
     req_id=$(jq -r '.id' "$req")
     [ -n "$req_id" ] && [ "$req_id" != null ] || exit 1
-    jq -nc --arg id "$req_id" --arg status "$status" --arg model "$model" --arg effort "$effort" \
-      '{schema:"fm-pi-switch-model.v1",id:$id,status:$status,model:$model,effort:$effort,session_id:"sess-1"}' \
+    jq -nc --arg incarnation "$(jq -r .incarnation "$req")" --arg id "$req_id" --arg status "$status" --arg model "$model" --arg effort "$effort" \
+      '{schema:"fm-pi-switch-model.v1",id:$id,incarnation:$incarnation,status:$status,model:$model,effort:$effort,session_id:"sess-1"}' \
       > "$ack"
   ) >/dev/null 2>&1 &
   printf '%s' "$!"
@@ -226,7 +246,7 @@ test_busy_worker_is_deferred_not_interrupted() {
   listing=$(write_listing "$dir")
   auth=$(write_auth "$dir")
   seed_busy "$dir" t1
-  : > "$(fm_pi_switch_ready_path "$dir/home/state" t1)"
+  seed_handshake "$dir" t1
   out=$(FM_PI_SWITCH_LISTING="$listing" FM_PI_SWITCH_AUTH_JSON="$auth" \
     FM_CONTROL_SWITCH_IDLE_WAIT=0.05 \
     run_control "$dir" t1 switch-model --model openai-codex/gpt-5.6-luna); rc=$?
@@ -247,19 +267,19 @@ test_same_provider_switch_confirms_and_preserves_dispatch() {
 EOF
   auth="$dir/auth.json"
   seed_idle "$dir" t1
-  : > "$(fm_pi_switch_ready_path "$dir/home/state" t1)"
+  seed_handshake "$dir" t1
   # Same-provider: stay on zai, raise effort.
-  waiter=$(ack_when_requested "$dir" t1 applied zai/glm-5.3 medium)
+  waiter=$(ack_when_requested "$dir" t1 applied zai/glm-5.3 high)
   out=$(FM_PI_SWITCH_LISTING="$listing" FM_PI_SWITCH_AUTH_JSON="$auth" \
     FM_CONTROL_SWITCH_ACK_WAIT=2 \
-    run_control "$dir" t1 switch-model --effort medium); rc=$?
+    run_control "$dir" t1 switch-model --effort high); rc=$?
   wait "$waiter" 2>/dev/null || true
   expect_code 0 "$rc" "a confirmed same-provider switch should succeed: $out"
   assert_contains "$out" "switched-model t1" "the outcome should name the verb"
   assert_contains "$out" "model=zai/glm-5.3" "readback model should be recorded"
   meta="$dir/home/state/t1.meta"
   [ "$(fm_meta_get "$meta" model)" = zai/glm-5.3 ] || fail "model= was not confirmed"
-  [ "$(fm_meta_get "$meta" effort)" = medium ] || fail "effort= was not confirmed"
+  [ "$(fm_meta_get "$meta" effort)" = high ] || fail "effort= was not confirmed"
   [ "$(fm_meta_get "$meta" dispatch_model)" = zai/glm-5.3 ] || fail "dispatch snapshot was overwritten"
   [ "$(fm_meta_get "$meta" dispatch_effort)" = low ] || fail "original effort snapshot was lost"
   grep -q 'status=applied' "$(fm_pi_switch_log_path "$dir/home/state" t1)" \
@@ -275,7 +295,7 @@ test_cross_provider_switch_updates_runtime_only() {
   listing=$(write_listing "$dir")
   auth=$(write_auth "$dir")
   seed_idle "$dir" t1
-  : > "$(fm_pi_switch_ready_path "$dir/home/state" t1)"
+  seed_handshake "$dir" t1
   waiter=$(ack_when_requested "$dir" t1 applied openai-codex/gpt-5.6-luna low)
   out=$(FM_PI_SWITCH_LISTING="$listing" FM_PI_SWITCH_AUTH_JSON="$auth" \
     FM_CONTROL_SWITCH_ACK_WAIT=2 \
@@ -298,7 +318,7 @@ test_failed_change_without_readback_keeps_old_model() {
   listing=$(write_listing "$dir")
   auth=$(write_auth "$dir")
   seed_idle "$dir" t1
-  : > "$(fm_pi_switch_ready_path "$dir/home/state" t1)"
+  seed_handshake "$dir" t1
   waiter=$(ack_when_requested "$dir" t1 failed zai/glm-5.3 low)
   # Override ack to omit a different model so metadata stays put.
   out=$(FM_PI_SWITCH_LISTING="$listing" FM_PI_SWITCH_AUTH_JSON="$auth" \
@@ -319,7 +339,7 @@ test_partial_success_reconciles_to_readback() {
   listing=$(write_listing "$dir")
   auth=$(write_auth "$dir")
   seed_idle "$dir" t1
-  : > "$(fm_pi_switch_ready_path "$dir/home/state" t1)"
+  seed_handshake "$dir" t1
   waiter=$(ack_when_requested "$dir" t1 refused openai-codex/gpt-5.6-luna low)
   out=$(FM_PI_SWITCH_LISTING="$listing" FM_PI_SWITCH_AUTH_JSON="$auth" \
     FM_CONTROL_SWITCH_ACK_WAIT=2 \
@@ -370,6 +390,89 @@ test_harness_flag_stays_relaunch_only() {
   assert_contains "$out" "relaunch" "the refusal should point at relaunch"
   pass "switch-model refuses --harness rather than changing runtime"
 }
+
+test_timeout_and_late_ack() {
+  local dir out rc listing auth req meta
+  dir=$(new_case timeout)
+  add_task "$dir" t1 pi
+  printf pi > "$dir/fake/command"
+  listing=$(write_listing "$dir"); auth=$(write_auth "$dir")
+  seed_idle "$dir" t1; seed_handshake "$dir" t1
+  out=$(FM_PI_SWITCH_LISTING="$listing" FM_PI_SWITCH_AUTH_JSON="$auth" \
+    FM_CONTROL_SWITCH_ACK_WAIT=0.05 run_control "$dir" t1 switch-model --model openai-codex/gpt-5.6-luna)
+  rc=$?
+  expect_code 1 "$rc" 'missing acknowledgement must time out'
+  meta="$dir/home/state/t1.meta"
+  [ "$(fm_meta_get "$meta" model)" = unknown ] || fail 'timeout must record runtime unknown'
+  req="$dir/home/state/t1.model-switch.req"
+  jq -e '.cancelled == true' "$req" >/dev/null || fail 'timeout must cancel the request'
+  jq '. + {status:"partial",model:"zai/glm-5.3",effort:"high"}' "$req" > "$dir/home/state/t1.model-switch.ack"
+  fm_pi_switch_reconcile "$dir/home/state" t1 "$meta" || fail 'late acknowledgement did not reconcile'
+  [ "$(fm_meta_get "$meta" effort)" = high ] || fail 'same-model partial effort must reconcile'
+  [ "$(fm_meta_get "$meta" account_provider)" = zai ] || fail 'provider must derive from readback'
+  [ ! -e "$req" ] || fail 'reconciled request must retire'
+  pass 'timeout cancellation and late partial readback reconcile'
+}
+
+test_exhausted_quota_refuses() {
+  local dir out rc listing auth
+  dir=$(new_case exhausted)
+  add_task "$dir" t1 pi
+  printf pi > "$dir/fake/command"
+  listing=$(write_listing "$dir"); auth=$(write_auth "$dir")
+  seed_idle "$dir" t1; seed_handshake "$dir" t1
+  out=$(FM_TEST_QUOTA='{"schemaVersion":5,"providers":[{"provider":"codex","quotaSemantics":{"status":"known","effectiveAvailability":[{"scope":"all_models","status":"known","effectivePercentRemaining":0,"runway":{"status":"exhausted_now"}}]}}]}' \
+    FM_PI_SWITCH_LISTING="$listing" FM_PI_SWITCH_AUTH_JSON="$auth" \
+    run_control "$dir" t1 switch-model --model openai-codex/gpt-5.6-luna)
+  rc=$?
+  expect_code 1 "$rc" 'direct calls must reject exhausted quota'
+  assert_contains "$out" 'quota exhausted' 'quota veto must explain exhaustion'
+  [ ! -e "$dir/home/state/t1.model-switch.req" ] || fail 'exhausted route published a request'
+  pass 'direct switch refuses exhausted quota before publication'
+}
+
+test_unconfirmed_selection() {
+  local dir out listing auth waiter meta
+  dir=$(new_case unknown)
+  add_task "$dir" t1 pi
+  printf pi > "$dir/fake/command"
+  listing=$(write_listing "$dir"); auth=$(write_auth "$dir")
+  seed_idle "$dir" t1; seed_handshake "$dir" t1
+  waiter=$(ack_when_requested "$dir" t1 applied openai-codex/gpt-5.6-luna '')
+  out=$(FM_PI_SWITCH_LISTING="$listing" FM_PI_SWITCH_AUTH_JSON="$auth" \
+    FM_CONTROL_SWITCH_ACK_WAIT=2 run_control "$dir" t1 switch-model --model openai-codex/gpt-5.6-luna)
+  expect_code 1 "$?" 'missing effort must not report success'
+  wait "$waiter" 2>/dev/null || true
+  meta="$dir/home/state/t1.meta"
+  [ "$(fm_meta_get "$meta" effort)" = unknown ] || fail 'missing effort must remain unknown'
+  assert_contains "$out" 'not confirmed' 'unconfirmed effort must explain refusal'
+  pass 'applied acknowledgements cannot substitute an unconfirmed effort'
+}
+
+test_metadata_lock_preserves_concurrent_fields() {
+  local dir meta lock waiter
+  dir=$(new_case lock)
+  add_task "$dir" t1 pi
+  meta="$dir/home/state/t1.meta"
+  lock=$(fm_meta_lock_path "$meta")
+  fm_lock_acquire_wait "$lock" || fail 'could not acquire metadata lock'
+  bash -c '. "$1/bin/fm-wake-lib.sh"; . "$1/bin/fm-pi-switch-lib.sh";
+    fm_pi_switch_confirm_meta "$2" openai-codex/gpt-5.6-luna high' _ "$ROOT" "$meta" &
+  waiter=$!
+  printf 'x_request=concurrent-relay\n' >> "$meta"
+  fm_lock_release "$lock"
+  wait "$waiter" || fail 'metadata confirmation failed'
+  [ "$(fm_meta_get "$meta" x_request)" = concurrent-relay ] || fail 'concurrent field lost'
+  [ "$(fm_meta_get "$meta" model)" = openai-codex/gpt-5.6-luna ] || fail 'runtime confirmation lost'
+  [ "$(fm_meta_get "$meta" dispatch_model)" = zai/glm-5.3 ] || fail 'dispatch snapshot lost'
+  pass 'locked metadata confirmation preserves concurrent fields and dispatch snapshot'
+}
+
+test_unconfirmed_selection
+test_metadata_lock_preserves_concurrent_fields
+
+test_timeout_and_late_ack
+test_exhausted_quota_refuses
 
 test_switch_model_is_a_control_verb
 test_non_pi_harness_is_refused

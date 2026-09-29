@@ -17,7 +17,7 @@ Load this before changing a running Pi or Pi-signed ship or scout worker's provi
 
 `../../../bin/fm-control.sh` owns the task-addressed verb.
 `../../../bin/fm-pi-switch-lib.sh` owns the request/ack protocol.
-`../../../bin/fm-profile-switch.sh` owns checkpoint-to-action mapping, cooldown, and the retry bound.
+`../../../bin/fm-profile-switch.sh` owns bounded checkpoint classification, cooldown, and the retry bound.
 `../../../docs/agent-control.md` owns the control-plane split from `relaunch`.
 
 ## When to load
@@ -41,12 +41,14 @@ Never disguise a relaunch as a live switch, and never switch the pane to RPC mod
 
 ## Apply a live switch
 
-1. Resolve the destination with `bin/fm-profile-switch.sh` against `config/crew-dispatch.json` and the task's `dispatch_*` snapshot.
-2. Rank same-class Pi candidates with `quota-array-dispatch` when quota evidence exists.
+1. Reassess the matched rule against the remaining task and original `dispatch_*` snapshot; preserve its reasoning class unless the phase is explicitly routine and independently verifiable.
+2. Apply `quota-array-dispatch` to every alternative in that rule, including catalog, account, context, completion horizon and spendPriority evidence; supply the chosen rule and profile using the selector's `--rule` and `--selected` arguments.
+   These arguments attest your assessment; they are not inferred from model names, effort ranks or array order.
+   Use `--decision` when making the bounded checkpoint decision yourself.
 3. Drive the change with `FM_HOME=<home> bin/fm-control.sh <id> switch-model --model <provider/id> --effort <level>`.
 4. Trust only a `switched-model` line whose model and effort came from runtime readback.
 5. On `busy` deferral, wait; do not interrupt a tool operation to switch.
-6. On refusal, timeout, or crash, read the task record: `model=` is the last confirmed profile, `dispatch_*` is the original intake profile, and `state/<id>.model-switch.log` is the history a later relaunch must honor.
+6. On refusal, timeout, or crash, read the task record: `model=` is the confirmed readback or `unknown` pending reconciliation, `dispatch_*` is the original intake profile, and `state/<id>.model-switch.log` is the history a later relaunch must honor.
 
 Automatic switches among verified profiles on the existing accounts are authorized:
 
@@ -58,6 +60,6 @@ Automatic switches among verified profiles on the existing accounts are authoriz
 
 Pass the worker's checkpoint line as `--evidence`.
 When `TYPESAFE_API_KEY` is configured, the selector makes one bounded Jev call per checkpoint, after cooldown and retry checks, and Jev classifies only among the decisions that checkpoint allows (`escalate`, `move-provider`, `reduce` with `--routine`, `stay`).
-Jev never sees or returns model IDs; the selector still owns every destination check.
-`jev=on` means Jev's answer was used; `jev=ambiguous`, `error`, or `never-send` fall back to the checkpoint mapping.
-When the key is absent there is no Jev call and the output says `jev=off`: the checkpoint mapping is a proposal, and the switch decision is your judgment.
+Jev never sees or returns model IDs; `quota-array-dispatch` remains the authoritative selection procedure, and the direct control verb repeats the quota preflight against the configured destination profile.
+`jev=on` means Jev's answer was used; absent, ambiguous, error, and never-send outcomes hold for firstmate judgment unless an explicit bounded `--decision` is supplied.
+A pending request must reconcile before another switch or relaunch; after a confirmed dead worker with no readback, relaunch requires an explicit destination model and effort.

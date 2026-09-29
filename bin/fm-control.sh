@@ -997,6 +997,14 @@ do_relaunch() {
   local -a spawn_args
 
   require_state_verified_backend relaunch
+  if ! fm_pi_switch_reconcile "$STATE" "$ID" "$META"; then
+    [ "$(agent_state)" = dead ] || die "reconcile the pending Pi switch before relaunch"
+    rm -f "$(fm_pi_switch_req_path "$STATE" "$ID")"
+    [ -n "$NEW_MODEL" ] && [ -n "$NEW_EFFORT" ] || die "dead worker has unknown runtime; relaunch requires explicit model and effort"
+  fi
+  if [ "$(fm_meta_get "$META" model)" = unknown ] || [ "$(fm_meta_get "$META" effort)" = unknown ]; then
+    [ -n "$NEW_MODEL" ] && [ -n "$NEW_EFFORT" ] || die "runtime profile unknown; relaunch requires explicit model and effort"
+  fi
   resolve_relaunch_profile
 
   case "$KIND" in
@@ -1113,9 +1121,9 @@ wait_switch_ack() {  # <req-id>
 
 do_switch_model() {
   local current_model current_effort dest_model dest_effort parsed provider model_id
-  local pin_selection pin_declared pin_root pin_providers row context_tokens
+  local pin_selection pin_declared pin_root pin_providers
   local state_now verdict ready_path req_id ack ack_status ack_model ack_effort
-  local ack_reason ack_session from_model log_line retries max_retries
+  local ack_reason ack_session from_model retries max_retries quota_provider recorded_account
 
   fm_pi_switch_harness_supported "$HARNESS" \
     || die "task $ID records harness '$RECORDED_HARNESS'; live model switch is a Pi session operation, and a harness change uses relaunch"
@@ -1126,6 +1134,7 @@ do_switch_model() {
   [ "$state_now" = alive ] \
     || die "task $ID's agent is '$state_now'; live model switch needs a running Pi session"
 
+  fm_pi_switch_reconcile "$STATE" "$ID" "$META" || die "pending live-switch outcome"
   current_model=$(fm_meta_get "$META" model)
   current_effort=$(fm_meta_get "$META" effort)
   dest_model=${NEW_MODEL:-$current_model}
@@ -1139,32 +1148,44 @@ do_switch_model() {
   fm_pi_switch_effort_ok "$dest_effort" \
     || die "--effort must be one of default, low, medium, high, xhigh, max"
 
-  row=$(fm_pi_switch_catalog_row "$provider" "$model_id") \
-    || die "Pi catalog does not list $provider/$model_id; choose a listed model or omit --model"
-  context_tokens=${row##*$'\t'}
-
   pin_selection=$(fm_worker_account_resolve "$HARNESS" "$CONFIG") || exit 1
+  recorded_account=$(fm_meta_get "$META" account)
+  pin_declared=${pin_selection%%$'\t'*}
+  [ "$recorded_account" = "$pin_declared" ] || die "worker account pin changed since launch; relaunch with the approved account before switching"
   if [ -n "$pin_selection" ]; then
-    pin_declared=${pin_selection%%$'\t'*}
     pin_root=${pin_selection#*$'\t'}
     pin_providers=${pin_root#*$'\t'}
     pin_root=${pin_root%%$'\t'*}
     case " $pin_providers " in
       *" $provider "*) ;;
-      *)
-        die "config/pi-account pins Pi workers to providers ($pin_providers), but --model '$dest_model' names provider '$provider'"
-        ;;
+      *) die "config/pi-account pins Pi workers to providers ($pin_providers); destination $provider is not allowed" ;;
     esac
-    fm_worker_account_check "$HARNESS" "$pin_declared" "$pin_root" "${FM_PI_BIN:-pi}" "$provider" \
-      || exit 1
-  else
-    fm_pi_switch_auth_ready "$provider" \
-      || die "Pi provider '$provider' is not authenticated (pi auth check); sign in with /login or choose a ready provider"
+    export PI_CODING_AGENT_DIR="$pin_root"
+    fm_worker_account_check "$HARNESS" "$pin_declared" "$pin_root" "${FM_PI_BIN:-pi}" "$provider" || exit 1
   fi
+  fm_pi_switch_catalog_row "$provider" "$model_id" >/dev/null \
+    || die "Pi catalog does not list $provider/$model_id; choose a listed model"
+  if [ -z "$pin_selection" ]; then
+    fm_pi_switch_auth_ready "$provider" || die "Pi provider '$provider' is not authenticated"
+  fi
+  quota_provider=$(jq -er --arg h "$HARNESS" --arg m "$dest_model" --arg e "$dest_effort" '
+    def profiles: if type == "array" then .[] elif type == "object" then . else empty end;
+    [(.rules[]?.use | profiles), (.default | profiles)] |
+    [.[] | select(.harness == $h and .model == $m and .effort == $e) | .provider] | unique |
+    if length == 1 and (.[0] | type) == "string" and (.[0] | length) > 0 then .[0]
+    else error("destination needs a configured profile with a quota provider") end
+  ' "$CONFIG/crew-dispatch.json") || die "destination is not a configured verified profile; reassess with quota-array-dispatch"
+  fm_pi_switch_quota_ready "$HARNESS" "$dest_model" "$quota_provider" || die "destination quota preflight failed"
 
   ready_path=$(fm_pi_switch_ready_path "$STATE" "$ID")
   fm_pi_switch_wait_file "$ready_path" "$SWITCH_READY_WAIT" "$SWITCH_POLL" \
     || die "task $ID has no Pi live-switch handshake; relaunch the worker so its session loads the current extension"
+
+  jq -e --arg gen "$(fm_meta_get "$META" busy_gen)" '
+    .schema == "fm-pi-switch-model.v1" and .busy_gen == $gen and
+    (.incarnation | type == "string" and length > 0) and
+    (.session_id | type == "string" and length > 0)
+  ' "$ready_path" >/dev/null || die "stale or invalid Pi session handshake"
 
   max_retries=8
   retries=0
@@ -1175,13 +1196,20 @@ do_switch_model() {
     req_id=$(fm_pi_switch_new_id)
     fm_pi_switch_write_request "$STATE" "$ID" "$req_id" "$provider" "$model_id" "$dest_effort" \
       || die "could not publish the live-switch request for task $ID"
+    fm_pi_switch_append_history "$STATE" "$ID" \
+      "ts=$(date +%s) req=$req_id from=$current_model:$current_effort to=$dest_model:$dest_effort status=attempted"
     if ! ack=$(wait_switch_ack "$req_id"); then
-      fm_pi_switch_append_history "$STATE" "$ID" \
-        "ts=$(date +%s) req=$req_id from=${current_model:-none}:${current_effort:-default} to=$dest_model:${dest_effort:-default} status=timeout"
-      die "task $ID live-switch request $req_id was not confirmed within ${SWITCH_ACK_WAIT}s; runtime and metadata were not updated"
+      fm_pi_switch_cancel "$STATE" "$ID" || die "could not cancel pending switch"
+      fm_pi_switch_confirm_meta "$META" unknown unknown || die "could not record unknown runtime"
+      fm_pi_switch_append_history "$STATE" "$ID" "ts=$(date +%s) req=$req_id status=timeout"
+      die "task $ID switch timed out; cancellation requested, runtime unknown until readback; reconcile before another switch or relaunch"
     fi
     ack_status=$(printf '%s' "$ack" | jq -r '.status')
     ack_reason=$(printf '%s' "$ack" | jq -r '.reason // empty')
+    ack_model=$(printf '%s' "$ack" | jq -r '.model // empty')
+    ack_effort=$(printf '%s' "$ack" | jq -r '.effort // empty')
+    ack_session=$(printf '%s' "$ack" | jq -r '.session_id // empty')
+    fm_pi_switch_reconcile "$STATE" "$ID" "$META" || die "could not reconcile runtime readback"
     case "$ack_status" in
       busy)
         retries=$((retries + 1))
@@ -1189,38 +1217,17 @@ do_switch_model() {
         continue
         ;;
       applied)
-        ack_model=$(printf '%s' "$ack" | jq -r '.model // empty')
-        ack_effort=$(printf '%s' "$ack" | jq -r '.effort // empty')
-        ack_session=$(printf '%s' "$ack" | jq -r '.session_id // empty')
-        [ -n "$ack_model" ] || die "task $ID reported an applied switch with no runtime model; metadata was not updated"
-        fm_pi_switch_confirm_meta "$META" "$ack_model" "${ack_effort:-$dest_effort}" "$provider"
-        from_model=${current_model:-none}:${current_effort:-default}
-        log_line="ts=$(date +%s) req=$req_id from=$from_model to=$ack_model:${ack_effort:-default} status=applied"
-        [ -z "$ack_session" ] || log_line="$log_line session=$ack_session"
-        [ -z "$context_tokens" ] || log_line="$log_line dest_context=$context_tokens"
-        fm_pi_switch_append_history "$STATE" "$ID" "$log_line"
-        echo "switched-model $ID harness=$HARNESS from=$from_model model=$ack_model effort=${ack_effort:-default} provider=$provider session=${ack_session:-unknown} backend=$BACKEND endpoint=$T worktree=$WT"
+        [ "$ack_model" = "$dest_model" ] && [ -n "$ack_effort" ] \
+          && { [ "$dest_effort" = default ] || [ "$ack_effort" = "$dest_effort" ]; } \
+          || die "task $ID partial switch: requested selection not confirmed; metadata reconciled to readback"
+        from_model=${current_model:-unknown}:${current_effort:-unknown}
+        echo "switched-model $ID harness=$HARNESS from=$from_model model=$ack_model effort=$ack_effort provider=${ack_model%%/*} session=$ack_session backend=$BACKEND endpoint=$T worktree=$WT"
         return 0
         ;;
-      refused|failed)
-        ack_model=$(printf '%s' "$ack" | jq -r '.model // empty')
-        if [ -n "$ack_model" ] && [ "$ack_model" != "$current_model" ]; then
-          ack_effort=$(printf '%s' "$ack" | jq -r '.effort // empty')
-          fm_pi_switch_confirm_meta "$META" "$ack_model" "${ack_effort:-$current_effort}" "$provider"
-          fm_pi_switch_append_history "$STATE" "$ID" \
-            "ts=$(date +%s) req=$req_id from=${current_model:-none}:${current_effort:-default} to=$ack_model:${ack_effort:-default} status=partial reason=${ack_reason:-$ack_status}"
-          die "task $ID live switch $ack_status (${ack_reason:-no reason}); runtime now reports $ack_model and metadata was reconciled to that readback"
-        fi
-        fm_pi_switch_append_history "$STATE" "$ID" \
-          "ts=$(date +%s) req=$req_id from=${current_model:-none}:${current_effort:-default} to=$dest_model:${dest_effort:-default} status=$ack_status reason=${ack_reason:-none}"
-        die "task $ID live switch $ack_status (${ack_reason:-no reason}); recorded model remains ${current_model:-none}"
-        ;;
-      *)
-        die "task $ID live-switch ack status '$ack_status' is not a known result; metadata was not updated"
-        ;;
+      *) die "task $ID live switch $ack_status (${ack_reason:-no reason}); runtime model=${ack_model:-unknown} effort=${ack_effort:-unknown}; metadata reconciled" ;;
     esac
   done
-  die "task $ID stayed busy across $max_retries live-switch attempts; recorded model remains ${current_model:-none}"
+  die "task $ID stayed busy across $max_retries live-switch attempts; runtime readback was reconciled"
 }
 
 # --- verbs ------------------------------------------------------------------

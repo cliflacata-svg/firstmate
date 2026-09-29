@@ -95,6 +95,9 @@ Switching harness is therefore one ordinary relaunch rather than a separate mech
 It keeps the running process, the recorded endpoint, the isolated copy, and the conversation.
 [`bin/fm-pi-switch-lib.sh`](../bin/fm-pi-switch-lib.sh) owns the request/ack handshake the per-task `-e` extension already loaded at spawn implements, and [`bin/fm-profile-switch.sh`](../bin/fm-profile-switch.sh) owns checkpoint classification, cooldown, and the retry bound.
 A destination harness other than the current Pi adapter is still `relaunch`.
+Firstmate selects a capability-matched configured profile through [`quota-array-dispatch`](../.agents/skills/quota-array-dispatch/SKILL.md); the direct verb repeats quota and account checks and the extension validates context and model-specific effort before applying it.
+A timeout records an unknown runtime until the bound acknowledgement reconciles; it never proves that the previous model remained active.
+The [Pi switch skill](../.agents/skills/pi-live-model-switch/SKILL.md) owns checkpoint judgment and selection, while the scripts' help owns exact arguments.
 
 ### Reclaiming a task whose endpoint is gone
 

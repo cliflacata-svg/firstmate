@@ -147,6 +147,9 @@ drive_pi_switch() {
   local js
   js="${1%.ts}.mjs"
   cp "$1" "$js"
+  mkdir -p "$(dirname "$js")/node_modules/@earendil-works/pi-ai"
+  printf '%s\n' '{"type":"module","exports":"./index.js"}' > "$(dirname "$js")/node_modules/@earendil-works/pi-ai/package.json"
+  printf '%s\n' 'export const getSupportedThinkingLevels = model => model.levels;' > "$(dirname "$js")/node_modules/@earendil-works/pi-ai/index.js"
   EXT_PATH="$js" REQ="$2" ACK="$3" READY="$4" MODE="$5" node --input-type=module 2>&1 <<'EOF'
 import { pathToFileURL } from "node:url";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
@@ -157,13 +160,20 @@ const pi = {
   events: { on: (name, fn) => { handlers[name] = fn; } },
   _model: { provider: "zai", id: "glm-5.3", contextWindow: 1_000_000 },
   _effort: "low",
+  calls: 0,
   setModel: async (model) => {
+    pi.calls++;
     if (process.env.MODE === "authfail") return false;
     pi._model = model;
+    if (process.env.MODE === "late") {
+      const req = JSON.parse(readFileSync(process.env.REQ, "utf8"));
+      writeFileSync(process.env.REQ, JSON.stringify({...req, cancelled:true}));
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
     return true;
   },
-  setThinkingLevel: (level) => { pi._effort = level; },
-  getThinkingLevel: () => pi._effort,
+  setThinkingLevel: (level) => { pi._effort = process.env.MODE === "clamped" ? "high" : level; },
+  getThinkingLevel: () => process.env.MODE === "unknown-effort" ? "" : pi._effort,
 };
 const ctx = {
   isIdle: () => process.env.MODE !== "busy",
@@ -171,7 +181,7 @@ const ctx = {
   modelRegistry: {
     find: (provider, id) => {
       if (process.env.MODE === "missing") return undefined;
-      return { provider, id, contextWindow: process.env.MODE === "oversize" ? 100 : 272_000 };
+      return { provider, id, levels: ["low", "high"], contextWindow: process.env.MODE === "oversize" ? 100 : 272_000 };
     },
   },
   getContextUsage: () => ({ tokens: process.env.MODE === "oversize" ? 500 : 10, contextWindow: 1_000_000, percent: 1 }),
@@ -181,11 +191,23 @@ mod.default(pi);
 await handlers["session_start"]({}, ctx);
 if (!existsSync(process.env.READY)) throw new Error("session_start did not write the handshake");
 const req = JSON.parse(readFileSync(process.env.REQ, "utf8"));
+const ready = JSON.parse(readFileSync(process.env.READY, "utf8"));
+Object.assign(req, { incarnation: ready.incarnation, session_id: ready.session_id, deadline: Date.now() / 1000 + 10 });
+if (process.env.MODE === "stale") req.incarnation = "old-runtime";
+if (process.env.MODE === "expired") req.deadline = 1;
+if (process.env.MODE === "unsupported-effort") req.effort = "medium";
+writeFileSync(process.env.REQ, JSON.stringify(req));
 await new Promise((resolve) => setTimeout(resolve, 400));
+if (process.env.MODE === "stale") {
+  if (existsSync(process.env.ACK) || pi.calls) throw new Error("stale request applied");
+  handlers["session_shutdown"]({}, ctx);
+  process.stdout.write(JSON.stringify({status:"ignored",calls:pi.calls}));
+  process.exit(0);
+}
 if (!existsSync(process.env.ACK)) throw new Error("extension did not write an ack");
 const ack = JSON.parse(readFileSync(process.env.ACK, "utf8"));
 if (ack.id !== req.id) throw new Error("ack id mismatch");
-process.stdout.write(JSON.stringify(ack) + "\n");
+process.stdout.write(JSON.stringify({...ack, calls:pi.calls}) + "\n");
 if (handlers["session_shutdown"]) handlers["session_shutdown"]({}, ctx);
 EOF
 }
@@ -222,6 +244,22 @@ test_pi_extension_live_switch_handshake() {
   out=$(drive_pi_switch "$ext" "$req" "$ack" "$ready" oversize) || fail "oversize drive failed: $out"
   printf '%s' "$out" | jq -e '.status == "refused" and .reason == "context-exceeds-destination"' >/dev/null \
     || fail "oversize ack was wrong: $out"
+  local mode expected
+  for mode in stale expired unsupported-effort clamped unknown-effort late; do
+    rm -f "$ack"
+    jq -nc '{schema:"fm-pi-switch-model.v1",id:"edge",provider:"openai-codex",model_id:"gpt-5.6-luna",model:"openai-codex/gpt-5.6-luna",effort:"low"}' > "$req"
+    out=$(drive_pi_switch "$ext" "$req" "$ack" "$ready" "$mode") || fail "$mode drive failed: $out"
+    case "$mode" in
+      stale) expected=ignored ;;
+      expired) expected=cancelled ;;
+      unsupported-effort) expected=refused ;;
+      *) expected=partial ;;
+    esac
+    printf '%s' "$out" | jq -e --arg expected "$expected" '.status == $expected' >/dev/null || fail "$mode status: $out"
+    case "$mode" in stale|expired|unsupported-effort)
+      printf '%s' "$out" | jq -e '.calls == 0' >/dev/null || fail "$mode must not call setModel" ;;
+    esac
+  done
   pass "pi extension arms a live-switch handshake, applies idle changes, and refuses busy, missing, and oversize destinations"
 }
 
