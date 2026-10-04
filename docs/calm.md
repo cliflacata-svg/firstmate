@@ -28,35 +28,31 @@ Streaming text and the genuine reply that ends a response remain visible.
 
 ## Pi
 
-### Working boat
+### Working ship
 
-While Calm is active and an agent run is under way, Calm hides Pi's built-in `Working...` row and shows a small two-row animated boat in its place.
+While Calm is active and an agent run is under way, Calm hides Pi's built-in `Working...` row and shows a small two-row animated ship in its place.
 No separate Calm status row is added.
 While Calm is off, Pi's stock working row is left exactly as Pi renders it.
 
-The boat looks like this:
+The optional `config/calm-motif` value `starfleet` replaces the default boat with a compact saucer over two nacelles and changes related Firstmate terminal glyphs to `🛸` for routine notes and `✦` for captain notes.
+The absent or unrecognized default stays nautical: its asymmetric three-cell `◿│◣` sail is centered over the five-cell `╲▁▁▁╱` hull.
+Both silhouettes are one standard ANSI yellow over an animated standard ANSI blue field and fall back deterministically on narrow terminals.
 
-- The water fills the usable width with low one-cell Unicode bars, all in standard ANSI blue, so the swell shows through bar height alone.
-- The asymmetric three-cell `◿│◣` sail is centered over the five-cell `╲▁▁▁╱` hull.
-- The whole boat is one standard ANSI yellow, including both sail halves, the mast, and the hull.
-- The hull's zero-height interior keeps the swell continuous beneath the boat.
-- Very narrow terminals fall back to a smaller deterministic sprite.
+### Ship motion
 
-### Boat motion
-
-The boat is deliberately calm.
+The ship is deliberately calm.
 It moves one column every 880ms.
 The long smooth wave advances one quarter-cell every 220ms, so the surface stays alive between boat steps.
 Deterministically varied half-waves stay between nine and thirteen cells.
-The boat remains phase-locked inside a broad zero-height trough through movement and edge reversals.
+The ship remains phase-locked inside a broad zero-height trough through movement and edge reversals.
 Every resize reflows the sprite without wrapping.
-The boat disappears when the run settles, aborts, or fails.
+The ship disappears when the run settles, aborts, or fails.
 
-### Boat position between working periods
+### Ship position between working periods
 
-Within one Pi session and Calm extension lifetime, the next working period resumes the boat from its last rendered column and travel direction rather than restarting at the left edge.
+Within one Pi session and Calm extension lifetime, the next working period resumes the ship from its last rendered column and travel direction rather than restarting at the left edge.
 Hidden elapsed time does not advance the animation.
-A resize while hidden clamps the frozen boat to the new width without changing its valid travel direction.
+A resize while hidden clamps the frozen ship to the new width without changing its valid travel direction.
 A fresh Pi session or new Calm extension lifetime starts at the normal initial position.
 
 ### What Calm hides on Pi
@@ -203,14 +199,15 @@ A preference that cannot be written leaves the current choice unchanged, and the
 The mod reads the preference before the first row draws.
 Toggling Calm redraws every hooked row already on screen, so rows drawn before the toggle hide or restore retroactively.
 
-### Working sailboat on Claude Code
+### Working ship on Claude Code
 
-While Calm is on, the stock working row (`Sauteing... (12s · 300 tokens)`) becomes the same two-row sailboat Pi draws, from the same shared sprite geometry.
-The sailboat fills the row inside the transcript margin.
-It repaints on the boat's 220ms cadence, with the hull moving every 880ms.
+While Calm is on, the stock working row (`Sauteing... (12s · 300 tokens)`) becomes the same two-row ship Pi draws, from the same shared sprite geometry.
+With `config/calm-motif` set to `starfleet`, that ship is the Starfleet-style saucer and nacelles.
+The ship fills the row inside the transcript margin.
+It repaints on the ship's 220ms cadence, with the hull moving every 880ms.
 It reflows on resize, and appears and disappears exactly where the stock row would.
 
-On Claude Code the boat is painted in Claude Code's own theme colors rather than Pi's standard ANSI codes:
+On Claude Code the ship is painted in Claude Code's own theme colors rather than Pi's standard ANSI codes:
 
 | Part | Color source | Dark theme | Light theme |
 | --- | --- | --- | --- |
@@ -228,10 +225,10 @@ Each note is appended to the transcript as its own system-notice row, which Clau
 
 | Line | When |
 | --- | --- |
-| `⛵ <task>: <summary>` | The supervision session recorded a routine outcome that is not silent. |
-| `⚓ [seq N] <task>: <summary>` | It recorded a captain outcome; main still receives and processes it as [`supervision-host.md`](supervision-host.md#captain-outcomes) describes. |
-| `⛵ Supervision session paused after repeated engine errors; main will handle wakes while it cools down.` | The host's broken-session latch trips. |
-| `⛵ Supervision session recovered after a successful cooldown probe.` | That latch clears. |
+| `⛵ <task>: <summary>` or `🛸 <task>: <summary>` | The supervision session recorded a routine outcome that is not silent. |
+| `⚓ [seq N] <task>: <summary>` or `✦ [seq N] <task>: <summary>` | It recorded a captain outcome; main still receives and processes it as [`supervision-host.md`](supervision-host.md#captain-outcomes) describes. |
+| `⛵` or `🛸` followed by the paused-session message | The host's broken-session latch trips. |
+| `⛵` or `🛸` followed by the recovered-session message | That latch clears. |
 
 Silent routine outcomes show nothing.
 The mod checks the outcome store's display tail copy and the host's latch file every 3 seconds, so a note can land a few seconds after its outcome.

@@ -8,6 +8,7 @@
 // host's latch (bin/fm-supervision-host.sh). It only renders: nothing here marks an
 // outcome read or processed. Everything is pure so tests run it under Node.
 import { calmCodeRootFromPluginRoot } from "./fm-calm-presentation.ts";
+import { calmMotifGlyphs, type CalmMotif } from "./fm-calm-motif.ts";
 
 export const BRANCH_NOTE_BOAT = "⛵";
 export const BRANCH_NOTE_ANCHOR = "⚓";
@@ -73,12 +74,16 @@ export function parseOutcomeMarker(text: string | undefined): number {
 }
 
 /** Pi's transcript line for one row, on one line; a silent row has none. */
-export function outcomeNoteLine(row: OutcomeRow): string | undefined {
+export function outcomeNoteLine(
+  row: OutcomeRow,
+  motif: CalmMotif = "nautical",
+): string | undefined {
   if (row.silent) return undefined;
+  const glyphs = calmMotifGlyphs(motif);
   const summary = row.summary.replace(/\s*\n\s*/g, " ");
   return row.verdict === "captain"
-    ? `${BRANCH_NOTE_ANCHOR} [seq ${row.seq}] ${row.task}: ${summary}`
-    : `${BRANCH_NOTE_BOAT} ${row.task}: ${summary}`;
+    ? `${glyphs.captain} [seq ${row.seq}] ${row.task}: ${summary}`
+    : `${glyphs.routine} ${row.task}: ${summary}`;
 }
 
 /**
@@ -93,16 +98,17 @@ export function replayOutcomeNotes(
   cursor: number,
   processed: number,
   shownThrough = 0,
+  motif: CalmMotif = "nautical",
 ): string[] {
   const shown = shownThrough > (rows[rows.length - 1]?.seq ?? 0) ? 0 : shownThrough;
   const due = rows.filter(
     (row) => row.seq > shown && (row.verdict === "captain" ? row.seq > processed : row.seq > cursor),
   );
-  const lines = due.map(outcomeNoteLine).filter((line): line is string => line !== undefined);
+  const lines = due.map((row) => outcomeNoteLine(row, motif)).filter((line): line is string => line !== undefined);
   if (lines.length <= BRANCH_NOTES_REPLAY_LIMIT) return lines;
   const omitted = lines.length - BRANCH_NOTES_REPLAY_LIMIT;
   return [
-    `${BRANCH_NOTE_BOAT} ${omitted} earlier supervision ${omitted === 1 ? "note" : "notes"} not replayed; bin/fm-branch-outcome.sh list shows them`,
+    `${calmMotifGlyphs(motif).routine} ${omitted} earlier supervision ${omitted === 1 ? "note" : "notes"} not replayed; bin/fm-branch-outcome.sh list shows them`,
     ...lines.slice(-BRANCH_NOTES_REPLAY_LIMIT),
   ];
 }
@@ -113,15 +119,19 @@ export function replayOutcomeNotes(
  * silently. A tail that ends below the anchor is a replaced store: re-anchor there
  * without replaying it.
  */
-export function newOutcomeNotes(rows: readonly OutcomeRow[], lastSeen: number): { lines: string[]; lastSeen: number } {
+export function newOutcomeNotes(
+  rows: readonly OutcomeRow[],
+  lastSeen: number,
+  motif: CalmMotif = "nautical",
+): { lines: string[]; lastSeen: number } {
   const last = rows.length === 0 ? lastSeen : rows[rows.length - 1]!.seq;
   if (last < lastSeen) return { lines: [], lastSeen: last };
   const fresh = rows.filter((row) => row.seq > lastSeen);
-  const lines = fresh.map(outcomeNoteLine).filter((line): line is string => line !== undefined);
+  const lines = fresh.map((row) => outcomeNoteLine(row, motif)).filter((line): line is string => line !== undefined);
   const missed = (fresh[0]?.seq ?? lastSeen + 1) - lastSeen - 1;
   if (missed > 0) {
     lines.unshift(
-      `${BRANCH_NOTE_BOAT} ${missed} earlier supervision ${missed === 1 ? "outcome" : "outcomes"} not shown; bin/fm-branch-outcome.sh list shows them`,
+      `${calmMotifGlyphs(motif).routine} ${missed} earlier supervision ${missed === 1 ? "outcome" : "outcomes"} not shown; bin/fm-branch-outcome.sh list shows them`,
     );
   }
   return { lines, lastSeen: last };
@@ -155,12 +165,17 @@ export function parseHostHealth(text: string | undefined): HostHealth | undefine
 }
 
 /** The note a latch change owes, as Pi's two health notes: a trip, or a recovery under the same key. */
-export function hostHealthNote(previous: HostHealth | undefined, next: HostHealth | undefined): string | undefined {
+export function hostHealthNote(
+  previous: HostHealth | undefined,
+  next: HostHealth | undefined,
+  motif: CalmMotif = "nautical",
+): string | undefined {
   if (next === undefined) return undefined;
   const wasCooling = previous !== undefined && previous.key === next.key && previous.cooling;
+  const routine = calmMotifGlyphs(motif).routine;
   if (next.cooling && !wasCooling) {
-    return `${BRANCH_NOTE_BOAT} Supervision session paused after repeated engine errors; main will handle wakes while it cools down.`;
+    return `${routine} Supervision session paused after repeated engine errors; main will handle wakes while it cools down.`;
   }
-  if (!next.cooling && wasCooling) return `${BRANCH_NOTE_BOAT} Supervision session recovered after a successful cooldown probe.`;
+  if (!next.cooling && wasCooling) return `${routine} Supervision session recovered after a successful cooldown probe.`;
   return undefined;
 }

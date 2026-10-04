@@ -64,6 +64,7 @@ import {
   userTextOperationalRecord,
   workingNoteKey,
 } from "../lib/fm-calm-presentation.ts";
+import { parseCalmMotif, type CalmMotif } from "../lib/fm-calm-motif.ts";
 import {
   firstmateStateDirectory,
   hostHealthNote,
@@ -84,6 +85,7 @@ const CALM_COMMAND = "calm";
 // same as a new Pi extension lifetime.
 let calm = false;
 let preferencePath: string | undefined;
+let motif: CalmMotif = "nautical";
 let activation: Promise<boolean> | undefined;
 let loading: Promise<void> | undefined;
 let ticker: { cancel(): void } | undefined;
@@ -92,7 +94,7 @@ const finalReplies = new Set<string>();
 // Each doorbell's record verdict, by record path. Records are immutable once published
 // but pruned after seven days, so every invalidation drops the cache and rechecks.
 const doorbellVerdicts = new Map<string, Promise<boolean>>();
-const sprite = createCalmWorkingShipSprite();
+let sprite = createCalmWorkingShipSprite();
 let palette: CalmShipRasterPalette = CALM_SHIP_RASTER_PALETTES.light;
 // Every Spinner site currently drawing the boat, by its requestId, with the mounted
 // Raster size a blit must repeat exactly.
@@ -167,6 +169,8 @@ async function load($: EngineInterface): Promise<void> {
     $.plugin.root,
   );
   calm = parseCalmPreference(await readText($, preferencePath));
+  motif = parseCalmMotif(await readText($, `${preferencePath.slice(0, -"calm".length)}calm-motif`));
+  sprite = createCalmWorkingShipSprite(motif);
   palette = CALM_SHIP_RASTER_PALETTES[calmShipPaletteFamily(await readTheme($))];
   try {
     const restored = classifyRestoredTranscript(await $.session.messages());
@@ -199,6 +203,7 @@ async function resetSession($: EngineInterface): Promise<void> {
   sites.clear();
   sprite.reset();
   palette = CALM_SHIP_RASTER_PALETTES.light;
+  motif = "nautical";
   await ensureLoaded($);
 }
 
@@ -309,10 +314,10 @@ async function followTail($: EngineInterface, current: NotesState): Promise<void
   const rows = parseOutcomeTail(tail.text);
   let lines: string[];
   if (current.lastSeen === undefined) {
-    lines = replayOutcomeNotes(rows, current.cursor, current.processed, current.shown);
+    lines = replayOutcomeNotes(rows, current.cursor, current.processed, current.shown, motif);
     current.lastSeen = rows[rows.length - 1]?.seq;
   } else {
-    const fresh = newOutcomeNotes(rows, current.lastSeen);
+    const fresh = newOutcomeNotes(rows, current.lastSeen, motif);
     lines = fresh.lines;
     current.lastSeen = fresh.lastSeen;
   }
@@ -353,7 +358,7 @@ async function pollNotes($: EngineInterface): Promise<void> {
     if (health !== undefined) {
       current.healthStamp = health.stamp;
       const next = parseHostHealth(health.text);
-      const note = hostHealthNote(current.health, next);
+      const note = hostHealthNote(current.health, next, motif);
       if (next !== undefined) current.health = next;
       if (note !== undefined) $.ui.log(note);
     }

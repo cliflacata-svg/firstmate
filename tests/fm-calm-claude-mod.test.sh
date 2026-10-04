@@ -131,6 +131,18 @@ for (const width of [0, 1, 2, 3, 4, 5, 6, 9, 12, 24, 40, 80, 121]) {
     frames += 1;
   }
 }
+// The supported Starfleet selector changes the ship and supervision glyphs while the
+// narrow fallback remains one deterministic field row.
+{
+  const starship = core.createCalmWorkingShipSprite("starfleet");
+  const wide = starship.frame(20);
+  check(wide.length === 2, "the Starfleet sprite did not keep its two-row layout");
+  check(cells(wide[0]) === " " + core.CALM_WORKING_STARSHIP_SAUCER, "the Starfleet saucer is not centered over its nacelles");
+  check(cells(wide[1]).includes(core.CALM_WORKING_STARSHIP_NACELLES), "the Starfleet nacelles are missing");
+  const narrow = starship.frame(2);
+  check(narrow.length === 1 && cells(narrow[0]).length === 2, "the Starfleet narrow fallback overflowed");
+  check(core.createCalmWorkingShipSprite("nautical").frame(5)[0][1].text === "◿│◣", "the nautical default changed");
+}
 // Freeze and resume: restoring the last painted frame discards later ticks on both.
 {
   const animation = pi.createCalmWorkingShipAnimation();
@@ -258,6 +270,10 @@ for (const [stored, expected] of [["on\\n", true], ["on", true], [" on \\n", tru
   check(policy.parseCalmPreference(stored) === expected, \`preference \${JSON.stringify(stored)}\`);
 }
 check(policy.serializeCalmPreference(true) === "on\\n" && policy.serializeCalmPreference(false) === "off\\n", "serialized values");
+const motif = await import(pathToFileURL($(js_string "$MOD") + "/lib/fm-calm-motif.ts").href);
+check(motif.parseCalmMotif("starfleet\\n") === "starfleet", "the Starfleet motif preference was not recognized");
+check(motif.parseCalmMotif("unknown") === "nautical", "an unknown motif did not preserve the nautical default");
+check(motif.calmMotifGlyphs("starfleet").routine === "🛸" && motif.calmMotifGlyphs("starfleet").captain === "✦", "the Starfleet supervision glyphs changed");
 const shortNote = "Checking briefly.";
 const multiLineReply = "The result is substantive.\\nHere is the context needed to continue.";
 const atThresholdReply = "x".repeat(240);

@@ -26,10 +26,12 @@
 // session or new extension lifetime calls reset() and starts at the normal initial
 // position. State is never a module-level or process-global singleton.
 
-// The asymmetric three-cell sail is centered over a five-cell hull. The one-cell
-// quarter triangle keeps the left sail lighter than the full right sail, and the whole
-// boat (both sail halves, mast, and hull) is one color so the sprite reads as one shape.
-// The hull's inner cells retain zero-height water glyphs instead of interrupting the trough.
+// The nautical default is an asymmetric three-cell sail over a five-cell hull.
+// The optional Starfleet motif instead draws a saucer over a nacelled starship.
+// Both silhouettes use the existing color classes so each harness can preserve its
+// own palette without a second rendering system.
+import { CALM_MOTIF_NAUTICAL, type CalmMotif } from "./fm-calm-motif.ts";
+
 const LEFT_SAIL = "◿";
 const MAST = "│";
 const RIGHT_SAIL = "◣";
@@ -37,11 +39,18 @@ const HULL_LEFT = "╲";
 const HULL_WATER = "▁▁▁";
 const HULL_RIGHT = "╱";
 const SAIL_OFFSET = 1;
+const STARSHIP_SAUCER = "╭─◡─╮";
+const STARSHIP_NACELLES = "◄═╯◉╰═►";
+const STARSHIP_FALLBACK = "◄◆►";
+const STARSHIP_SAUCER_OFFSET = 1;
 
 /** The complete sail as drawn, left to right. */
 export const CALM_WORKING_SHIP_SAIL = `${LEFT_SAIL}${MAST}${RIGHT_SAIL}`;
 /** The complete hull as drawn, left to right. */
 export const CALM_WORKING_SHIP_HULL = `${HULL_LEFT}${HULL_WATER}${HULL_RIGHT}`;
+/** The Starfleet-style saucer and nacelles shown when the motif is selected. */
+export const CALM_WORKING_STARSHIP_SAUCER = STARSHIP_SAUCER;
+export const CALM_WORKING_STARSHIP_NACELLES = STARSHIP_NACELLES;
 
 /** Terminal columns a string of one-column glyphs occupies. */
 function cellCount(text: string): number {
@@ -105,13 +114,6 @@ export type CalmWorkingShipSprite = {
   waterPhase(): number;
 };
 
-/** Longest hull start column that still fits the sprite in `width` usable cells. */
-function trackSpan(width: number): number {
-  if (width >= HULL_WIDTH) return width - HULL_WIDTH;
-  if (width >= SAIL_WIDTH) return width - SAIL_WIDTH;
-  return 0;
-}
-
 /** Stable bounded variation for successive half-waves on either side of the trough. */
 function halfWaveLength(index: number, negative: boolean): number {
   let value =
@@ -168,7 +170,13 @@ function waveLevel(
   );
 }
 
-export function createCalmWorkingShipSprite(): CalmWorkingShipSprite {
+export function createCalmWorkingShipSprite(
+  motif: CalmMotif = CALM_MOTIF_NAUTICAL,
+): CalmWorkingShipSprite {
+  const starship = motif === "starfleet";
+  const shipWidth = starship ? cellCount(STARSHIP_NACELLES) : HULL_WIDTH;
+  const upperWidth = starship ? cellCount(STARSHIP_SAUCER) : SAIL_WIDTH;
+  const upperOffset = starship ? STARSHIP_SAUCER_OFFSET : SAIL_OFFSET;
   let position = 0;
   let direction = 1;
   let span = 0;
@@ -194,7 +202,11 @@ export function createCalmWorkingShipSprite(): CalmWorkingShipSprite {
       position = 0;
       return;
     }
-    span = trackSpan(width);
+    span = width >= shipWidth
+      ? width - shipWidth
+      : width >= upperWidth
+        ? width - upperWidth
+        : 0;
     position = Math.min(position, span);
     settleDirectionAtEdges();
   };
@@ -232,9 +244,15 @@ export function createCalmWorkingShipSprite(): CalmWorkingShipSprite {
     return runs;
   };
 
-  // The boat is one boat-colored run per row, so its halves never split into mismatched colors.
-  const sail = (): CalmWorkingShipRun[] => [{ text: CALM_WORKING_SHIP_SAIL, color: "boat" }];
-  const hull = (): CalmWorkingShipRun[] => [{ text: CALM_WORKING_SHIP_HULL, color: "boat" }];
+  // One ship-colored run per row keeps each silhouette coherent in every palette.
+  const upper = (): CalmWorkingShipRun[] => [{
+    text: starship ? STARSHIP_SAUCER : CALM_WORKING_SHIP_SAIL,
+    color: "boat",
+  }];
+  const lower = (): CalmWorkingShipRun[] => [{
+    text: starship ? STARSHIP_NACELLES : CALM_WORKING_SHIP_HULL,
+    color: "boat",
+  }];
 
   return {
     position: () => position,
@@ -277,30 +295,32 @@ export function createCalmWorkingShipSprite(): CalmWorkingShipSprite {
 
       const hullCenter =
         position +
-        (width >= HULL_WIDTH
-          ? Math.floor(HULL_WIDTH / 2)
-          : Math.floor(SAIL_WIDTH / 2));
+        (width >= shipWidth
+          ? Math.floor(shipWidth / 2)
+          : Math.floor(upperWidth / 2));
 
       let frame: CalmWorkingShipFrame;
-      if (width < SAIL_WIDTH) {
-        // Too narrow for even the sail: a deterministic single row of low water.
+      if (width < upperWidth) {
+        // Too narrow for even the upper silhouette: a deterministic starfield/wave row.
         frame = [water(0, width, hullCenter)];
-      } else if (width < HULL_WIDTH) {
-        // Too narrow for the hull: the sail alone rides inside the water row.
+      } else if (width < shipWidth) {
+        // The smaller silhouette rides inside the animated lower field.
+        const fallback = starship ? STARSHIP_FALLBACK : CALM_WORKING_SHIP_SAIL;
+        const fallbackWidth = cellCount(fallback);
         frame = [
           [
             ...water(0, position, hullCenter),
-            ...sail(),
-            ...water(position + SAIL_WIDTH, width - position - SAIL_WIDTH, hullCenter),
+            { text: fallback, color: "boat" },
+            ...water(position + fallbackWidth, width - position - fallbackWidth, hullCenter),
           ],
         ];
       } else {
         frame = [
-          [{ text: " ".repeat(position + SAIL_OFFSET), color: "plain" }, ...sail()],
+          [{ text: " ".repeat(position + upperOffset), color: "plain" }, ...upper()],
           [
             ...water(0, position, hullCenter),
-            ...hull(),
-            ...water(position + HULL_WIDTH, width - position - HULL_WIDTH, hullCenter),
+            ...lower(),
+            ...water(position + shipWidth, width - position - shipWidth, hullCenter),
           ],
         ];
       }

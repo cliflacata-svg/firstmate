@@ -58,6 +58,7 @@ import {
   createCalmWorkingShipAnimation,
   createCalmWorkingShipWidget,
 } from "./lib/fm-calm-working-ship.ts";
+import { parseCalmMotif } from "./lib/fm-calm-motif.ts";
 import {
   calmPresentationHides,
   calmPresentationIsActive,
@@ -138,7 +139,7 @@ export default function (pi: ExtensionAPI) {
   // One animation instance per extension lifetime. Hiding the working widget freezes
   // this state; the next working period resumes it. session_start resets it so a fresh
   // Pi session starts at the normal initial position. Never module-global.
-  const workingShipAnimation = createCalmWorkingShipAnimation();
+  let workingShipAnimation: ReturnType<typeof createCalmWorkingShipAnimation>;
 
   // Single owner of Calm's working-row presentation choice. The widget is only created
   // or removed on a real transition, so repeated starts cannot duplicate its timer.
@@ -164,6 +165,15 @@ export default function (pi: ExtensionAPI) {
   const fmHome = process.env.FM_HOME || process.env.FM_ROOT_OVERRIDE || root;
   const configDirectory = process.env.FM_CONFIG_OVERRIDE || resolve(fmHome, "config");
   const calmPreferencePath = resolve(configDirectory, "calm");
+  const calmMotifPath = resolve(configDirectory, "calm-motif");
+  const loadCalmMotif = () => {
+    try {
+      return parseCalmMotif(readFileSync(calmMotifPath, "utf8"));
+    } catch {
+      return parseCalmMotif(undefined);
+    }
+  };
+  workingShipAnimation = createCalmWorkingShipAnimation(loadCalmMotif());
   // "max" is the legacy value written by the removed third presentation level, whose
   // behavior is now ordinary Calm; a home upgraded from it restores as on rather than
   // dropping to off. docs/configuration.md owns the persisted value schema.

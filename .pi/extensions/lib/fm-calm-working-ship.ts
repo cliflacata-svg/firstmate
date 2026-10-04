@@ -31,6 +31,7 @@ import {
   type CalmWorkingShipRun,
   type CalmWorkingShipSprite,
 } from "./fm-calm-working-ship-sprite.ts";
+import type { CalmMotif } from "./fm-calm-motif.ts";
 
 export { CALM_WORKING_SHIP_TICK_MS, CALM_WORKING_SHIP_TICKS_PER_MOVE };
 
@@ -57,8 +58,10 @@ function paintRun(run: CalmWorkingShipRun): string {
   return `${ANSI_FOREGROUND[run.color]}${run.text}${RESET}`;
 }
 
-export function createCalmWorkingShipAnimation(): CalmWorkingShipAnimation {
-  const sprite = createCalmWorkingShipSprite();
+export function createCalmWorkingShipAnimation(
+  motif?: CalmMotif,
+): CalmWorkingShipAnimation {
+  const sprite = createCalmWorkingShipSprite(motif);
   return {
     position: sprite.position,
     direction: sprite.direction,
