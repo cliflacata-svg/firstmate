@@ -494,7 +494,7 @@ The branch runs its normal operating procedure for the wake (`bin/fm-branch-prom
 | Review result | Report |
 | --- | --- |
 | Found literally nothing worth reporting | Verdict `routine`, `task=fleet`, and `silent=true`, so it is stored without a rendered note. |
-| A fleet-wide routine action | Omits `silent` and keeps its rendered sailboat note. |
+| A fleet-wide routine action | Omits `silent` and keeps its rendered note. |
 
 Only a captain-worthy finding reports verdict `captain` and appends a visible captain outcome entry.
 

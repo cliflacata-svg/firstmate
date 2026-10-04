@@ -42,7 +42,7 @@ Both silhouettes are one standard ANSI yellow over an animated standard ANSI blu
 
 The ship is deliberately calm.
 It moves one column every 880ms.
-The long smooth wave advances one quarter-cell every 220ms, so the surface stays alive between boat steps.
+The long smooth wave advances one quarter-cell every 220ms, so the surface stays alive between ship steps.
 Deterministically varied half-waves stay between nine and thirteen cells.
 The ship remains phase-locked inside a broad zero-height trough through movement and edge reversals.
 Every resize reflows the sprite without wrapping.
@@ -212,7 +212,7 @@ On Claude Code the ship is painted in Claude Code's own theme colors rather than
 | Part | Color source | Dark theme | Light theme |
 | --- | --- | --- | --- |
 | Every water cell | Spinner blue of the active theme family | `#93a5ff` | `#5769f7` |
-| The whole boat: both sail halves, mast, and hull | Claude orange of the stock spinner | `#d77757` | `#d77757` |
+| The whole ship: the sail, mast, and hull, or the Starfleet saucer and nacelles | Claude orange of the stock spinner | `#d77757` | `#d77757` |
 
 The theme family follows the `theme` setting by its prefix, `dark` or `light`, and is re-read when the theme changes.
 It uses the light set as the both-readable fallback for `auto`, custom, missing, or unreadable values.
@@ -290,7 +290,7 @@ Evidence for 2.1.280 and the record-backed doorbell is also in its [2026-09-25 r
 - On the main-screen layout (not the fullscreen alternate screen), a toggle redraws the live screen by clearing and reprinting it.
   The terminal's own scrollback keeps the earlier rendering above it.
   The fullscreen layout has no such stale copy.
-- The sailboat is painted through Claude Code's Raster element, whose colors are RGB quantized to 256-color escapes rather than the standard 16-color ANSI codes Pi's widget emits.
+- The working ship is painted through Claude Code's Raster element, whose colors are RGB quantized to 256-color escapes rather than the standard 16-color ANSI codes Pi's widget emits.
 - The detailed transcript view (`ctrl+o`) keeps its per-message timestamp and model headers where hidden assistant rows sat, because those headers are not a hookable drawing.
 - Collapsed thinking never appears in Claude Code's default view.
 - Supervision notes are system-notice rows rather than Pi's rendered entries: Claude Code draws them in one gray with its own bullet and the plugin's name, so the glyph cannot take its own color as on Pi.
