@@ -157,6 +157,7 @@ The Pi extension reloads this preference on every Pi `session_start`, including 
 
 The Claude Code mod reloads it on every `session.start`, including same-process session replacement.
 It also loads the preference lazily before any row that can draw ahead of that event, including during `claude --continue` restoration.
+This preference is local to each Firstmate home and is not part of secondmate inherited configuration.
 
 ### Terminal motif (config/calm-motif)
 
@@ -164,7 +165,7 @@ It also loads the preference lazily before any row that can draw ahead of that e
 Write `starfleet` to use the Starfleet-style saucer-and-nacelles working ship and its related Firstmate terminal glyphs.
 An absent, unreadable, or unrecognized value keeps the nautical presentation, so existing homes do not change.
 Restart or reload the affected terminal session after changing the file.
-This preference is local to each Firstmate home and is not part of secondmate inherited configuration.
+Like `config/calm`, it is local to each Firstmate home and is not part of secondmate inherited configuration.
 
 ## Pi supervision branch
 

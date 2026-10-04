@@ -141,6 +141,13 @@ for (const width of [0, 1, 2, 3, 4, 5, 6, 9, 12, 24, 40, 80, 121]) {
   check(cells(wide[1]).includes(core.CALM_WORKING_STARSHIP_NACELLES), "the Starfleet nacelles are missing");
   const narrow = starship.frame(2);
   check(narrow.length === 1 && cells(narrow[0]).length === 2, "the Starfleet narrow fallback overflowed");
+  check(cells(starship.frame(3)[0]) === "◄◆►", "the Starfleet fallback did not fit a three-cell row");
+  let rightmost = 0;
+  for (let step = 0; step < 200; step += 1) {
+    rightmost = Math.max(rightmost, cells(starship.frame(6)[0]).indexOf("◄"));
+    starship.tick();
+  }
+  check(rightmost === 3, "the Starfleet fallback did not reach the right edge of a narrow row");
   check(core.createCalmWorkingShipSprite("nautical").frame(5)[0][1].text === "◿│◣", "the nautical default changed");
 }
 // Freeze and resume: restoring the last painted frame discards later ticks on both.

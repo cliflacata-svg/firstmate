@@ -175,7 +175,8 @@ export function createCalmWorkingShipSprite(
 ): CalmWorkingShipSprite {
   const starship = motif === "starfleet";
   const shipWidth = starship ? cellCount(STARSHIP_NACELLES) : HULL_WIDTH;
-  const upperWidth = starship ? cellCount(STARSHIP_SAUCER) : SAIL_WIDTH;
+  const fallback = starship ? STARSHIP_FALLBACK : CALM_WORKING_SHIP_SAIL;
+  const fallbackWidth = starship ? cellCount(STARSHIP_FALLBACK) : SAIL_WIDTH;
   const upperOffset = starship ? STARSHIP_SAUCER_OFFSET : SAIL_OFFSET;
   let position = 0;
   let direction = 1;
@@ -204,8 +205,8 @@ export function createCalmWorkingShipSprite(
     }
     span = width >= shipWidth
       ? width - shipWidth
-      : width >= upperWidth
-        ? width - upperWidth
+      : width >= fallbackWidth
+        ? width - fallbackWidth
         : 0;
     position = Math.min(position, span);
     settleDirectionAtEdges();
@@ -297,16 +298,14 @@ export function createCalmWorkingShipSprite(
         position +
         (width >= shipWidth
           ? Math.floor(shipWidth / 2)
-          : Math.floor(upperWidth / 2));
+          : Math.floor(fallbackWidth / 2));
 
       let frame: CalmWorkingShipFrame;
-      if (width < upperWidth) {
+      if (width < fallbackWidth) {
         // Too narrow for even the upper silhouette: a deterministic starfield/wave row.
         frame = [water(0, width, hullCenter)];
       } else if (width < shipWidth) {
         // The smaller silhouette rides inside the animated lower field.
-        const fallback = starship ? STARSHIP_FALLBACK : CALM_WORKING_SHIP_SAIL;
-        const fallbackWidth = cellCount(fallback);
         frame = [
           [
             ...water(0, position, hullCenter),

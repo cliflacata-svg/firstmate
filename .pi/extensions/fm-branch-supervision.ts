@@ -132,7 +132,12 @@ import {
   classifyFirstmateOperationalText,
   encodeFirstmateOperationalInputWith,
 } from "./lib/fm-operational-input.ts";
-import { calmMotifGlyphs, parseCalmMotif } from "./lib/fm-calm-motif.ts";
+import {
+  CALM_MOTIF_NAUTICAL,
+  CALM_MOTIF_STARFLEET,
+  calmMotifGlyphs,
+  parseCalmMotif,
+} from "./lib/fm-calm-motif.ts";
 
 const extensionFile = fileURLToPath(import.meta.url);
 const extensionDir = dirname(extensionFile);
@@ -163,13 +168,14 @@ const BRANCH_TOOL_NAMES = ["read", "bash", "fm_branch_report"] as const;
 const branchCacheKey = `fm-branch-${createHash("sha256").update(fmHome).digest("hex").slice(0, 24)}`;
 
 const MIRROR_MESSAGE_CAP = 4000;
-const currentMotifGlyphs = () => {
+const MOTIF_GLYPHS = (() => {
   try {
     return calmMotifGlyphs(parseCalmMotif(readFileSync(join(config, "calm-motif"), "utf8")));
   } catch {
     return calmMotifGlyphs(parseCalmMotif(undefined));
   }
-};
+})();
+const ROUTINE_NOTE_GLYPHS = [CALM_MOTIF_NAUTICAL, CALM_MOTIF_STARFLEET].map((motif) => calmMotifGlyphs(motif).routine);
 const VISIBLE_OUTCOME_ENTRY_TYPE = "fm-branch-visible-outcome";
 // The processing half of the captain-outcome contract. The visible entry
 // above is the DISPLAY: crash-safe and exact-once. This hidden, typed request
@@ -711,7 +717,7 @@ export default function (pi: ExtensionAPI) {
   }
 
   function deliverBranchHealthNote(text: string): void {
-    const message = { customType: "fm-branch-merge", content: `${currentMotifGlyphs().routine} ${text}`, display: true };
+    const message = { customType: "fm-branch-merge", content: `${MOTIF_GLYPHS.routine} ${text}`, display: true };
     if (mainStreaming) pi.sendMessage(message, { deliverAs: "nextTurn" });
     else pi.sendMessage(message, {});
   }
@@ -1007,7 +1013,7 @@ export default function (pi: ExtensionAPI) {
   function deliverRoutineOutcome(row: OutcomeRow): void {
     const message = {
       customType: "fm-branch-merge",
-      content: `${currentMotifGlyphs().routine} ${row.task}: ${row.summary}`,
+      content: `${MOTIF_GLYPHS.routine} ${row.task}: ${row.summary}`,
       display: !row.silent,
     };
     if (mainStreaming) pi.sendMessage(message, { deliverAs: "nextTurn" });
@@ -2423,7 +2429,7 @@ ${context.command}
     const record = parseVisibleOutcomeRecord(entry.data);
     if (!record || record.verdict !== "captain") return undefined;
     return new Text(
-      `${theme.fg("customMessageText", currentMotifGlyphs().captain)}${theme.fg("dim", ` [seq ${record.seq}] ${record.task}: ${record.summary}`)}`,
+      `${theme.fg("customMessageText", MOTIF_GLYPHS.captain)}${theme.fg("dim", ` [seq ${record.seq}] ${record.task}: ${record.summary}`)}`,
       1,
       0,
     );
@@ -2433,12 +2439,11 @@ ${context.command}
   // routine note uses except an explicitly silent no-change outcome.
   pi.registerMessageRenderer?.("fm-branch-merge", (message, _options, theme) => {
     const note = textOfContent(message.content);
-    const routineGlyph = currentMotifGlyphs().routine;
-    const hasGlyph = note.startsWith(routineGlyph);
-    const rest = hasGlyph ? note.slice(routineGlyph.length) : note;
+    const routineGlyph = ROUTINE_NOTE_GLYPHS.find((glyph) => note.startsWith(glyph));
+    const rest = routineGlyph ? note.slice(routineGlyph.length) : note;
     const outputPad = 1;
     return new Text(
-      `${hasGlyph ? theme.fg("customMessageText", routineGlyph) : ""}${theme.fg("dim", rest)}`,
+      `${routineGlyph ? theme.fg("customMessageText", routineGlyph) : ""}${theme.fg("dim", rest)}`,
       outputPad,
       0,
     );
