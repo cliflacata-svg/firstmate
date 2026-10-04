@@ -1,0 +1,3 @@
+"🛸 t-7: merged PR #12" => <customMessageText>🛸</><dim> t-7: merged PR #12</>
+"⛵ t-3: older note written under nautical" => <customMessageText>⛵</><dim> t-3: older note written under nautical</>
+"plain note" => <dim>plain note</>

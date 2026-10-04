@@ -1,0 +1,16 @@
+motif starfleet
+  routine: 🛸 t-3: merged PR
+  captain: ✦ [seq 4] t-4: merged PR
+  health : 🛸 Supervision session paused after repeated engine errors; main will handle wakes while it cools down.
+  missed : 🛸 3 earlier supervision outcomes not shown; bin/fm-branch-outcome.sh list shows them
+motif nautical
+  routine: ⛵ t-3: merged PR
+  captain: ⚓ [seq 4] t-4: merged PR
+  health : ⛵ Supervision session paused after repeated engine errors; main will handle wakes while it cools down.
+  missed : ⛵ 3 earlier supervision outcomes not shown; bin/fm-branch-outcome.sh list shows them
+default (no motif arg): ⛵ t-1: merged PR
+starfleet width 2 ▁▁
+starfleet width 3 ◄◆►
+starfleet width 4 ▁◄◆►  |  ◄◆►▁
+starfleet width 5 ▁▁◄◆►  |  ▁◄◆►▁  |  ◄◆►▁▁
+starfleet width 6 ▁▁▁◄◆►  |  ▁▁◄◆►▁  |  ▁◄◆►▁▁  |  ◄◆►▁▁▁
