@@ -3863,7 +3863,7 @@ check(
   `the working presentation wrote session or transcript data: ${JSON.stringify(sessionWrites)}`,
 );
 
-// --- A starfleet motif preference reaches the extension's working widget ----------
+// --- A starfleet motif preference reaches the extension working widget -----------
 // The home above has no config/calm-motif, so its boat proves the nautical default;
 // a fresh extension lifetime in a home that selects starfleet must draw the starship.
 {
