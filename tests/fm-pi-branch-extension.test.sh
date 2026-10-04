@@ -1259,6 +1259,51 @@ EOF
   pass "captain outcomes are exact and exactly once across crash, reload, busy main, compaction, and an unrelated assistant response"
 }
 
+test_starfleet_motif_preference_reaches_routine_and_captain_notes() {
+  local repo home out status
+  repo="$TMP_ROOT/starfleet-motif-root"
+  home="$TMP_ROOT/starfleet-motif-home"
+  mkdir -p "$home/state" "$home/config"
+  printf 'starfleet\n' > "$home/config/calm-motif"
+  install_pi_branch_extension_fixture "$repo"
+  PLUGIN="$repo/.pi/extensions/fm-branch-supervision.ts" FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
+    DRIVER_PRELUDE="$DRIVER_PRELUDE" node --input-type=module > "$TMP_ROOT/node-output" 2>&1 <<'EOF'
+const prelude = process.env.DRIVER_PRELUDE;
+await eval(`(async () => { ${prelude}; globalThis.__t = { fire, settle, sentToMain, mainEntries, renderers, entryRenderers, outcomeScript, defaultSessionCtx, home }; })()`);
+const { fire, settle, sentToMain, mainEntries, renderers, entryRenderers, outcomeScript, defaultSessionCtx, home } = globalThis.__t;
+import { writeFileSync } from "node:fs";
+
+writeFileSync(`${home}/state/.lock`, `${process.ppid}\n`);
+outcomeScript(["append", "--task", "task-r", "--verdict", "routine", "--summary", "worker healthy"]);
+const captainSeq = Number(outcomeScript(["append", "--task", "task-c", "--verdict", "captain", "--summary", "PR ready for review"]));
+await fire("session_start", {}, defaultSessionCtx);
+const routineNotes = () => sentToMain.filter((sent) => sent.message.customType === "fm-branch-merge");
+const visible = () => mainEntries.filter((entry) => entry.customType === "fm-branch-visible-outcome");
+await settle(() => routineNotes().length === 1 && visible().length === 1, "starfleet outcome delivery");
+if (routineNotes()[0].message.content !== "🛸 task-r: worker healthy") {
+  throw new Error(`routine note ignored the starfleet preference: ${routineNotes()[0].message.content}`);
+}
+const captainRendered = entryRenderers.get("fm-branch-visible-outcome")(visible()[0], { expanded: false }, { fg: (_color, text) => text });
+if (captainRendered.text !== `✦ [seq ${captainSeq}] task-c: PR ready for review`) {
+  throw new Error(`captain outcome ignored the starfleet preference: ${captainRendered.text}`);
+}
+// Both the new note and a note stored before the motif changed keep a colored glyph.
+for (const [note, glyph] of [[routineNotes()[0].message.content, "🛸"], ["⛵ task-old: stored before the switch", "⛵"]]) {
+  const fgCalls = [];
+  renderers.get("fm-branch-merge")({ content: note }, { expanded: false }, { fg(color, text) { fgCalls.push({ color, text }); return text; } });
+  const glyphCalls = fgCalls.filter((call) => call.text === glyph);
+  if (glyphCalls.length !== 1 || glyphCalls[0].color === "dim") {
+    throw new Error(`merge renderer did not color ${glyph}: ${JSON.stringify(fgCalls)}`);
+  }
+}
+process.exit(0);
+EOF
+  status=$?
+  out=$(cat "$TMP_ROOT/node-output")
+  expect_code 0 "$status" "a starfleet home must deliver starfleet routine and captain notes: $out"
+  pass "a starfleet motif preference reaches routine notes and captain outcomes while earlier notes keep their colored glyph"
+}
+
 test_captain_outcome_processing_turn_is_sequence_keyed_and_re_presented() {
   local repo home out status
   repo="$TMP_ROOT/processing-turn-root"
@@ -5957,6 +6002,7 @@ test_real_pi_picker_primitives_stay_bounded_and_searchable
 test_branch_dispatch_two_stage_filter_and_prefix_contract
 test_requested_healthy_outcome_and_unsolicited_routine_outcome_delivery
 test_captain_outcome_is_exactly_once_across_crash_reload_and_unrelated_response
+test_starfleet_motif_preference_reaches_routine_and_captain_notes
 test_captain_outcome_processing_turn_is_sequence_keyed_and_re_presented
 test_abbreviated_processing_request_points_to_full_outcome
 test_large_unprocessed_backlog_replays_in_batches

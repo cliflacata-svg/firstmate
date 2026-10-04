@@ -3863,6 +3863,42 @@ check(
   `the working presentation wrote session or transcript data: ${JSON.stringify(sessionWrites)}`,
 );
 
+// --- A starfleet motif preference reaches the extension's working widget ----------
+// The home above has no config/calm-motif, so its boat proves the nautical default;
+// a fresh extension lifetime in a home that selects starfleet must draw the starship.
+{
+  const { mkdirSync, writeFileSync } = await import("node:fs");
+  const configDir = `${process.env.FM_HOME}/config`;
+  mkdirSync(configDir, { recursive: true });
+  writeFileSync(`${configDir}/calm`, "on\n");
+  writeFileSync(`${configDir}/calm-motif`, "starfleet\n");
+  const starHandlers = new Map();
+  const starPi = {
+    ...pi,
+    on(event, handler) {
+      const existing = starHandlers.get(event) ?? [];
+      existing.push(handler);
+      starHandlers.set(event, existing);
+    },
+    registerCommand() {},
+  };
+  const starExtension = await import(`${pathToFileURL(process.env.EXT).href}?starfleet=${Date.now()}`);
+  starExtension.default(starPi);
+  const fireStar = async (event, payload = {}) => {
+    for (const handler of starHandlers.get(event) ?? []) await handler(payload, ctx);
+  };
+  await fireStar("session_start", { reason: "startup" });
+  await fireStar("agent_start");
+  const starWidget = shipWidget();
+  check(!!starWidget, "a starfleet home with Calm on did not install the working widget");
+  const [upperRow, lowerRow] = starWidget.render(40).map(strip);
+  check(upperRow.includes("╭─◡─╮"), `starfleet widget did not draw the saucer: ${upperRow}`);
+  check(lowerRow.includes("◄═╯◉╰═►"), `starfleet widget did not draw the nacelles: ${lowerRow}`);
+  check(!upperRow.includes(SAIL) && !lowerRow.includes(HULL), "starfleet widget still drew the sailboat");
+  await fireStar("agent_settled");
+  check(liveTimers === 0 && ui.widgets.size === 0, "the starfleet working widget did not clean up");
+}
+
 globalThis.setInterval = realSetInterval;
 globalThis.clearInterval = realClearInterval;
 JS
